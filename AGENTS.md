@@ -71,7 +71,7 @@ def load_environment(dataset_name: str = 'gsm8k') -> vf.Environment:
     async def correct_answer(completion, answer) -> float:
         completion_ans = completion[-1]['content']
         return 1.0 if completion_ans == answer else 0.0
-    rubric = Rubric(funcs=[correct_answer])
+    rubric = vf.Rubric(funcs=[correct_answer])
     env = vf.SingleTurnEnv(dataset=dataset, rubric=rubric)
     return env
 ```

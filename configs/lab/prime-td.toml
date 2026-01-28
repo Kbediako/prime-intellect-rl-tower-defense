@@ -1,0 +1,17 @@
+# Prime RL hosted training template (update env id after publishing).
+name = "prime-td-baseline"
+model = "Qwen/Qwen3-4B-Instruct-2507"
+max_steps = 500
+batch_size = 256
+rollouts_per_example = 8
+
+# Optional .env files (loaded relative to this config file).
+# Use these for secrets and pass variable names via env args.
+env_file = ["secrets.env"]
+
+[sampling]
+max_tokens = 512
+
+[[env]]
+id = "kbediako/prime-intellect-rl-tower-defense"
+args = { split = "train", api_key_var = "CUSTOM_API_KEY" }

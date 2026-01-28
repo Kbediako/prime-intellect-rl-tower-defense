@@ -30,6 +30,30 @@ Run seeded evaluation and emit aggregate metrics:
 PYTHONPATH=src python3 scripts/eval_baseline.py --episodes 10 --max-rounds 20 --output out/metrics.json
 ```
 
+## Prime RL hosted training
+Hosted training runs use TOML configs with `prime rl run` and require a verifiers-compatible environment
+published to the Prime Environments Hub. This repo includes a starter template at
+`configs/lab/prime-td.toml` (update the `env.id` after publishing).
+
+Suggested setup steps (per Prime docs):
+1) Install Prime CLI and authenticate.
+2) Initialize a config with `prime rl init` (defaults to `rl.toml`).
+3) Publish the environment: `prime env push` (once the verifiers wrapper is ready).
+4) Launch a run: `prime rl run configs/lab/prime-td.toml`.
+
+Notes:
+- Pass secrets via `env_file` or `prime rl run -e KEY=VALUE`; avoid hardcoding credentials in `args`.
+- Use env args for variable names (e.g., `api_key_var`) and read them via `os.getenv`.
+
+## Prime Inference auth check
+Verify credentials and list available models:
+
+```bash
+export PRIME_API_KEY="..."
+export PRIME_TEAM_ID="..." # optional
+PYTHONPATH=src python3 scripts/prime_inference_check.py --limit 5
+```
+
 ## Next steps
 1) Expand tower/bloon mechanics (crosspathing, camo/regrow/fortified, MOAB layers) and freeplay scaling curves.
 2) Add a Prime Lab RFT config + Prime Inference eval runner.

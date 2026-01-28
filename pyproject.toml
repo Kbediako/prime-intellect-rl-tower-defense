@@ -9,7 +9,8 @@ authors = [
   {name = "Project Owner"}
 ]
 dependencies = [
-  "numpy>=1.26"
+  "numpy>=1.26",
+  "verifiers>=0.1.9.post3",
 ]
 
 [build-system]

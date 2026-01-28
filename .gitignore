@@ -1,7 +1,10 @@
 __pycache__/
 *.pyc
+*.egg-info/
 .venv/
 .env
 .DS_Store
 out/
+outputs/
+uv.lock
 logs/

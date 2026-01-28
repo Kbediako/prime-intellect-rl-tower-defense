@@ -671,7 +671,7 @@ vf-init my-env
 
 This creates the following structure:
 
-```
+```text
 environments/my_env/
 ├── my_env.py          # environment implementation
 ├── pyproject.toml     # package metadata and dependencies

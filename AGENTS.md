@@ -4,7 +4,7 @@ This guide covers best practices for building environments with `verifiers` and 
 
 ---
 
-Verifiers is our library for creating environments to train and evaluate LLMs.
+The Verifiers library is our library for creating environments to train and evaluate LLMs.
 
 Environments contain everything required to run and evaluate a model on a particular task:
 - A *dataset* of task inputs
@@ -13,7 +13,7 @@ Environments contain everything required to run and evaluate a model on a partic
 
 Environments can be used for training models with reinforcement learning (RL), evaluating capabilities, generating synthetic data, experimenting with agent harnesses, and more. 
 
-Verifiers is tightly integrated with the [Environments Hub](https://app.primeintellect.ai/dashboard/environments?ex_sort=most_stars), as well as our training framework [prime-rl](https://github.com/PrimeIntellect-ai/prime-rl) and our [Hosted Training](https://app.primeintellect.ai/dashboard/training) platform.
+The Verifiers library is tightly integrated with the [Environments Hub](https://app.primeintellect.ai/dashboard/environments?ex_sort=most_stars), as well as our training framework [prime-rl](https://github.com/PrimeIntellect-ai/prime-rl) and our [Hosted Training](https://app.primeintellect.ai/dashboard/training) platform.
 
 ## Getting Started
 
@@ -33,7 +33,7 @@ prime lab setup
 ```
 
 This sets up a Python project if needed (with `uv init`), installs `verifiers` (with `uv add verifiers`), creates the recommended workspace structure, and downloads useful starter files:
-```
+```text
 configs/
 ├── endpoints.py        # OpenAI-compatible API endpoint configuration
 └── lab/                # Example configs for Hosted Training
@@ -54,7 +54,7 @@ prime env init my-env # creates a new template in ./environments/my_env
 ```
 
 This will create a new module called `my_env` with a basic environment template.
-```
+```text
 environments/my_env/
 ├── my_env.py           # Main implementation
 ├── pyproject.toml      # Dependencies and metadata

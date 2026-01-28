@@ -30,15 +30,20 @@ Run seeded evaluation and emit aggregate metrics:
 PYTHONPATH=src python3 scripts/eval_baseline.py --episodes 10 --max-rounds 20 --output out/metrics.json
 ```
 
-## Prime Lab hosted training
-Hosted training requires a verifiers-compatible environment published to the Prime Environments Hub.
-This repo includes a starting template at `configs/lab/prime-td.toml` (update the `env.id` after publishing).
+## Prime RL hosted training
+Hosted training runs use TOML configs with `prime rl run` and require a verifiers-compatible environment
+published to the Prime Environments Hub. This repo includes a starter template at
+`configs/lab/prime-td.toml` (update the `env.id` after publishing).
 
 Suggested setup steps (per Prime docs):
 1) Install Prime CLI and authenticate.
-2) Run `prime lab setup` to pull official templates and endpoints.
+2) Initialize a config with `prime rl init` (defaults to `rl.toml`).
 3) Publish the environment: `prime env push` (once the verifiers wrapper is ready).
-4) Launch a hosted training run in Prime Lab using the template config.
+4) Launch a run: `prime rl run configs/lab/prime-td.toml`.
+
+Notes:
+- Pass secrets via `env_file` or `prime rl run -e KEY=VALUE`; avoid hardcoding credentials in `args`.
+- Use env args for variable names (e.g., `api_key_var`) and read them via `os.getenv`.
 
 ## Prime Inference auth check
 Verify credentials and list available models:

@@ -13,5 +13,5 @@ env_file = ["secrets.env"]
 max_tokens = 512
 
 [[env]]
-id = "kbediako/prime-intellect-rl-tower-defense"
+id = "kbediako/prime-td-env"
 args = { split = "train", api_key_var = "CUSTOM_API_KEY" }

@@ -8,3 +8,5 @@ out/
 outputs/
 uv.lock
 logs/
+dist/
+build/

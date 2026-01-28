@@ -65,7 +65,7 @@ def load_environment():
 When running this environment, each row in the dataset becomes a **rollout**:
 
 1. The `prompt` is sent to the model
-2. The model generates a response, which becomes the `completion`
+2. It generates a response, which becomes the `completion`
 3. The reward function scores the result
 
 In `SingleTurnEnv`, the simplest environment type, just a single model response occurs per rollout. More complex environment types will allow us to add tool use or other custom interaction protocols.

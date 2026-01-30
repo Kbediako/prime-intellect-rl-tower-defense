@@ -6,8 +6,9 @@
 
 | Run | Status | Run ID | Base Model | Env ID | Env Version | Config | Primary Delta |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| A | running | `cpe5e60oplhmtdsa3byqc6ro` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-a.toml` | baseline weights + sampling |
+| A | completed | `cpe5e60oplhmtdsa3byqc6ro` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-a.toml` | baseline weights + sampling |
 | B | completed | `y788w0uxqiormzp81q1poq41` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-b.toml` | tuned weights + tighter sampling |
+| C | running | `dw5b1xkhx8sj4ny9ljgvvqml` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-c.toml` | rollout_steps=0 curriculum change |
 
 ## Run A Snapshot (exact config)
 
@@ -29,6 +30,7 @@ Primary delta (intended):
 
 Secondary deltas (explicit):
 - **Tighter sampling** in B (`temperature=0.15`, `max_tokens=48`).
+- **Run C** keeps B settings but sets `dataset.rollout_steps=0` to remove tower-seeded prompts.
 
 ## Eval Protocol (fixed + deterministic)
 

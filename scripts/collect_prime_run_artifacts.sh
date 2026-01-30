@@ -10,6 +10,7 @@ RUN_ID="$1"
 OUT_DIR="${2:-artifacts/$RUN_ID}"
 
 mkdir -p "$OUT_DIR"
+export OUT_DIR
 
 warn() {
   echo "warn: $*" >&2
@@ -29,8 +30,13 @@ fi
 
 steps=$(python3 - <<'PY'
 import json
+import os
 from pathlib import Path
-path = Path("$OUT_DIR/progress.json")
+out_dir = Path(os.environ.get("OUT_DIR", ""))
+if not out_dir:
+    print("")
+    raise SystemExit(0)
+path = out_dir / "progress.json"
 if not path.exists():
     print("")
     raise SystemExit(0)
@@ -62,12 +68,15 @@ else
   warn "no sample steps detected; skipping rollout download"
 fi
 
-python3 - <<'PY'
+OUT_DIR="$OUT_DIR" python3 - <<'PY'
 import json
 import re
+import os
 from pathlib import Path
 
-out_dir = Path("$OUT_DIR")
+out_dir = Path(os.environ.get("OUT_DIR", ""))
+if not out_dir:
+    raise SystemExit("OUT_DIR not set")
 summary_path = out_dir / "summary.md"
 
 metrics_path = out_dir / "metrics.json"
@@ -199,4 +208,3 @@ if rollout_paths:
 summary_path.write_text("\n".join(lines) + "\n")
 print(f"wrote_summary={summary_path}")
 PY
-

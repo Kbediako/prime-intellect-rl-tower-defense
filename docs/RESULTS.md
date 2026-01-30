@@ -7,7 +7,7 @@
 | Run | Status | Run ID | Base Model | Env ID | Env Version | Config | Primary Delta |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A | running | `cpe5e60oplhmtdsa3byqc6ro` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-a.toml` | baseline weights + sampling |
-| B | queued | `<TBD>` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-b.toml` | tuned weights + tighter sampling |
+| B | running | `y788w0uxqiormzp81q1poq41` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-b.toml` | tuned weights + tighter sampling |
 
 ## Run A Snapshot (exact config)
 
@@ -42,26 +42,25 @@ Secondary deltas (explicit):
 
 | Run | Avg Round | Win Rate | Avg Lives | Avg Reward | Invalid JSON | Invalid Action | Truncation |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| A (early) | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| A (late) | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| A (early) | TBD | TBD | TBD | 92.17 | 0.00 | TBD | 0.00 |
+| A (late) | TBD | TBD | TBD | 103.58 | 0.00 | TBD | 0.00 |
 | B (early) | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 | B (late) | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
 
 ## Rollout Snippets (placeholders)
 
-1) **Snippet A1:** _TBD_
-   - **Demonstrates:** _TBD_
-2) **Snippet A2:** _TBD_
-   - **Demonstrates:** _TBD_
-3) **Snippet B1:** _TBD_
-   - **Demonstrates:** _TBD_
+1) **Snippet A1 (step 0, reward 0.4):** `{"type":"build","tower_type":"dart","x":8,"y":3}`
+   - **Demonstrates:** format-stable build action at episode start.
+2) **Snippet A2 (step 40, reward 110.4):** `{"type":"start_round"}`
+   - **Demonstrates:** high reward for advance action once towers are seeded in prompt.
+3) **Snippet A3 (step 70, reward 110.4):** `{"type":"start_round"}`
+   - **Demonstrates:** continued reliance on advance action; action diversity to monitor.
 
 ## Known Observations / Open Checks
 
-- Run A early samples show repeated `start_round` actions with high reward. Likely driven by `rollout_steps=2` seeding towers in the prompt (so “advance” is locally good). We will verify whether this reduces build/upgrade diversity and adjust in later runs if needed.
+- Run A action mix (steps 0/40/70): `start_round=17`, `build=7`, `invalid_json_rate=0.0`. Likely driven by `rollout_steps=2` seeding towers in the prompt (so “advance” is locally good). We will verify whether this reduces build/upgrade diversity and adjust in later runs if needed.
 
 ## Repro Commands (to fill once run completes)
 
 - Collect artifacts: `scripts/collect_prime_run_artifacts.sh <RUN_ID>`
 - Held-out eval: `python3 scripts/eval.py --eval-seed-start 1000 --eval-seed-count 50 --random-seed-start 2000 --random-seed-count 20 --max-rounds 20 --max-steps 200 --output-dir out/eval`
-

@@ -7,7 +7,7 @@
 | Run | Status | Run ID | Base Model | Env ID | Env Version | Config | Primary Delta |
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A | running | `cpe5e60oplhmtdsa3byqc6ro` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-a.toml` | baseline weights + sampling |
-| B | running | `y788w0uxqiormzp81q1poq41` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-b.toml` | tuned weights + tighter sampling |
+| B | completed | `y788w0uxqiormzp81q1poq41` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-b.toml` | tuned weights + tighter sampling |
 
 ## Run A Snapshot (exact config)
 
@@ -44,8 +44,8 @@ Secondary deltas (explicit):
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A (early) | TBD | TBD | TBD | 92.17 | 0.00 | TBD | 0.00 |
 | A (late) | TBD | TBD | TBD | 103.58 | 0.00 | TBD | 0.00 |
-| B (early) | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
-| B (late) | TBD | TBD | TBD | TBD | TBD | TBD | TBD |
+| B (early) | TBD | TBD | TBD | 25.62 | 0.00 | TBD | 0.00 |
+| B (late) | TBD | TBD | TBD | 0.05 | 0.00 | TBD | 0.00 |
 
 ## Rollout Snippets (placeholders)
 
@@ -55,10 +55,15 @@ Secondary deltas (explicit):
    - **Demonstrates:** high reward for advance action once towers are seeded in prompt.
 3) **Snippet A3 (step 70, reward 110.4):** `{"type":"start_round"}`
    - **Demonstrates:** continued reliance on advance action; action diversity to monitor.
+4) **Snippet B1 (step 0, reward 0.05):** `{"type":"build","tower_type":"dart","x":3,"y":2}`
+   - **Demonstrates:** format-stable build action in Run B early phase.
+5) **Snippet B2 (step 70, reward 0.05):** `{"type":"build","tower_type":"dart","x":3,"y":1}`
+   - **Demonstrates:** Run B remained build-heavy with low reward late in training.
 
 ## Known Observations / Open Checks
 
 - Run A action mix (steps 0/40/70): `start_round=17`, `build=7`, `invalid_json_rate=0.0`. Likely driven by `rollout_steps=2` seeding towers in the prompt (so “advance” is locally good). We will verify whether this reduces build/upgrade diversity and adjust in later runs if needed.
+- Run B action mix (steps 0/40/70): `build=23`, `start_round=1`, `invalid_json_rate=0.0`. Late-phase reward collapsed to ~0.05; needs follow-up run or config tweak if this persists.
 
 ## Repro Commands (to fill once run completes)
 

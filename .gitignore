@@ -3,6 +3,7 @@ __pycache__/
 *.egg-info/
 .venv/
 .env
+configs/lab/secrets.env
 .DS_Store
 out/
 outputs/
@@ -10,3 +11,4 @@ uv.lock
 logs/
 dist/
 build/
+docs/DM_TO_WILL_BROWN.md

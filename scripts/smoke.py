@@ -42,6 +42,7 @@ def assert_invalid_actions() -> None:
     assert "build" in valid_actions and isinstance(valid_actions["build"], list)
     assert "upgrade" in valid_actions and isinstance(valid_actions["upgrade"], list)
     assert "sell" in valid_actions and isinstance(valid_actions["sell"], list)
+    assert "start_round" in valid_actions
     for action in valid_actions["build"]:
         assert action["cost"] <= obs["cash"]
 
@@ -67,7 +68,7 @@ def assert_invalid_actions() -> None:
 def assert_round_cap() -> None:
     env = load_environment({"difficulty": {"max_rounds": 1}})
     env.reset(seed=321)
-    obs, reward, done, info = env.step({"type": "noop"})
+    obs, reward, done, info = env.step({"type": "start_round"})
     assert done is True
     assert obs["round"] == 1
 

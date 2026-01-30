@@ -10,7 +10,7 @@ import numpy as np
 
 from prime_td_env.environment import load_environment
 
-ACTION_TYPES = ["build", "upgrade", "sell", "noop"]
+ACTION_TYPES = ["build", "upgrade", "sell", "start_round", "noop"]
 UPGRADE_PATHS = ["a", "b", "c"]
 
 
@@ -18,6 +18,8 @@ def flatten_actions(valid_actions: Dict[str, Any]) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     for key in ("build", "upgrade", "sell"):
         actions.extend(valid_actions.get(key, []))
+    if valid_actions.get("start_round"):
+        actions.append({"type": "start_round"})
     if valid_actions.get("noop"):
         actions.append({"type": "noop"})
     return actions
@@ -140,13 +142,14 @@ def main() -> None:
     parser.add_argument("--max-rounds", type=int, default=20)
     parser.add_argument("--no-round-cap", action="store_true")
     parser.add_argument("--max-action-candidates", type=int, default=200)
-    parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--max-steps", type=int, default=200)
     parser.add_argument("--save-path", type=str, default="")
     args = parser.parse_args()
 
     config: Dict[str, Any] = {
         "observation": {"max_action_candidates": args.max_action_candidates},
         "difficulty": {},
+        "episode": {"max_steps": args.max_steps},
     }
     if args.no_round_cap:
         config["difficulty"]["max_rounds"] = None

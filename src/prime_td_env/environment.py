@@ -5,8 +5,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple
 import copy
+import json
 import random
+import re
 
+import verifiers as vf
+from datasets import Dataset
 
 @dataclass
 class EnvState:
@@ -14,6 +18,9 @@ class EnvState:
     lives: int
     cash: int
     seed: int
+    steps: int = 0
+    phase: str = "build"
+    last_round: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -113,6 +120,9 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "sell_refund_ratio": 0.7,
         "end_round_income": 100,
     },
+    "episode": {
+        "max_steps": None,
+    },
     "difficulty": {
         "max_rounds": None,
         "health_scale_per_round": 0.02,
@@ -126,9 +136,22 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "pop_reward_multiplier": 1.0,
         "life_loss_penalty": 10.0,
         "invalid_action_penalty": 1.0,
+        "step_penalty": 0.1,
+    },
+    "reward_weights": {
+        "format": 0.5,
+        "env": 1.0,
     },
     "observation": {
         "max_action_candidates": 200,
+        "max_build_slots": 200,
+        "max_towers": 50,
+        "max_threats": 5,
+        "max_path_points": None,
+    },
+    "dataset": {
+        "rollout_steps": 0,
+        "policy": "random",
     },
     "towers": {
         "dart": {
@@ -189,6 +212,8 @@ class TowerDefenseEnv:
 
     def __init__(self, config: Dict[str, Any]):
         self.config = deep_merge(DEFAULT_CONFIG, config or {})
+        self.env_id: str | None = None
+        self.env_args: Dict[str, Any] | None = None
         self.rng = random.Random(0)
         self.state: EnvState | None = None
         self.tower_types = self._load_tower_types()
@@ -199,6 +224,21 @@ class TowerDefenseEnv:
         self.next_tower_id = 1
         self.next_bloon_id = 1
 
+    def _normalize_upgrades(self, tower_type: TowerType, upgrades: Any) -> Dict[str, int]:
+        if not isinstance(upgrades, dict):
+            return {}
+        normalized: Dict[str, int] = {}
+        for path, tier in upgrades.items():
+            if path not in tower_type.upgrade_paths:
+                continue
+            coerced = _coerce_int(tier)
+            normalized[path] = max(0, coerced) if coerced is not None else 0
+        return normalized
+
+    def _get_upgrade_tier(self, tower: Tower, path: str) -> int:
+        tier = _coerce_int(tower.upgrades.get(path, 0))
+        return max(0, tier) if tier is not None else 0
+
     def reset(self, seed: int | None = None) -> Dict[str, Any]:
         seed_value = int(seed if seed is not None else self.config["map"]["seed"])
         self.rng = random.Random(seed_value)
@@ -207,6 +247,9 @@ class TowerDefenseEnv:
             lives=self.config["economy"]["starting_lives"],
             cash=self.config["economy"]["starting_cash"],
             seed=seed_value,
+            steps=0,
+            phase="build",
+            last_round={},
         )
         self.towers = {}
         self.next_tower_id = 1
@@ -215,17 +258,73 @@ class TowerDefenseEnv:
         self.build_slots = self._init_build_slots()
         return self._observation()
 
+    def load_from_observation(self, obs: Dict[str, Any]) -> Dict[str, Any]:
+        seed_value = int(obs.get("seed", self.config["map"]["seed"]))
+        self.rng = random.Random(seed_value)
+        self.state = EnvState(
+            round=int(obs.get("round", 1)),
+            lives=int(obs.get("lives", self.config["economy"]["starting_lives"])),
+            cash=int(obs.get("cash", self.config["economy"]["starting_cash"])),
+            seed=seed_value,
+            steps=int(obs.get("steps", 0)),
+            phase=str(obs.get("phase", "build")),
+            last_round=dict(obs.get("last_round", {}) or {}),
+        )
+        map_obs = obs.get("map", {}) if isinstance(obs.get("map"), dict) else {}
+        if map_obs.get("path"):
+            self.path = self._normalize_points(map_obs["path"], "map.path", min_points=2)
+        else:
+            self.path = self._init_path()
+        if map_obs.get("build_slots"):
+            self.build_slots = self._normalize_points(map_obs["build_slots"], "map.build_slots")
+        else:
+            self.build_slots = self._init_build_slots()
+
+        self.towers = {}
+        self.next_tower_id = 1
+        for tower in sorted(obs.get("towers", []), key=lambda t: int(t.get("id", 0))):
+            tower_id = int(tower.get("id", self.next_tower_id))
+            tower_type = self.tower_types.get(str(tower.get("type", "dart")))
+            self.towers[tower_id] = Tower(
+                id=tower_id,
+                type_name=str(tower.get("type", "dart")),
+                x=int(tower.get("x", 0)),
+                y=int(tower.get("y", 0)),
+                upgrades=self._normalize_upgrades(tower_type, tower.get("upgrades", {}))
+                if tower_type
+                else {},
+                targeting=str(tower.get("targeting", "first")),
+            )
+            self.next_tower_id = max(self.next_tower_id, tower_id + 1)
+        self.next_bloon_id = 1
+        return self._observation()
+
     def step(self, action: Dict[str, Any] | None) -> Tuple[Dict[str, Any], float, bool, Dict[str, Any]]:
         if self.state is None:
             raise RuntimeError("reset must be called before step")
 
+        self.state.steps += 1
         invalid_action = False
         invalid_reason = ""
+        completed_round = False
+        round_info: Dict[str, Any] = {}
+        info: Dict[str, Any] = {}
+        reward_breakdown = {
+            "pop_reward": 0.0,
+            "end_round_income": 0.0,
+            "life_loss_penalty": 0.0,
+            "invalid_action_penalty": 0.0,
+            "step_penalty": 0.0,
+        }
+
         if action is None:
             action = {"type": "noop"}
 
         action_type = action.get("type", "noop")
-        if action_type == "build":
+        if self.state.phase != "build":
+            invalid_action = True
+            invalid_reason = "wrong_phase"
+        elif action_type == "build":
             ok, reason = self._apply_build(action)
             invalid_action = not ok
             invalid_reason = reason
@@ -237,34 +336,58 @@ class TowerDefenseEnv:
             ok, reason = self._apply_sell(action)
             invalid_action = not ok
             invalid_reason = reason
+        elif action_type == "start_round":
+            reward, round_info = self._simulate_round()
+            reward_breakdown.update(round_info.get("reward_breakdown", {}))
+            info.update(round_info)
+            completed_round = True
         elif action_type == "noop":
             pass
         else:
             invalid_action = True
             invalid_reason = "unknown_action"
 
-        reward, info = self._simulate_round()
-        current_round = info.get("round", self.state.round)
+        reward = reward_breakdown["pop_reward"] + reward_breakdown["end_round_income"] + reward_breakdown["life_loss_penalty"]
+
+        step_penalty = float(self.config["rewards"].get("step_penalty", 0.0))
+        reward -= step_penalty
+        reward_breakdown["step_penalty"] = -step_penalty
+
         if invalid_action:
-            reward -= self.config["rewards"]["invalid_action_penalty"]
-            info["invalid_action"] = invalid_action
+            penalty = float(self.config["rewards"]["invalid_action_penalty"])
+            reward -= penalty
+            reward_breakdown["invalid_action_penalty"] = -penalty
+            info["invalid_action"] = True
             info["invalid_reason"] = invalid_reason
         else:
             info["invalid_action"] = False
 
-        done = False
-        termination = None
-        if self.state.lives <= 0:
-            done = True
-            termination = "loss"
+        current_round = int(info.get("round", self.state.round))
+        terminated = self.state.lives <= 0
+        truncated = False
+        max_steps = self.config.get("episode", {}).get("max_steps")
+        if max_steps is not None and self.state.steps >= int(max_steps):
+            truncated = True
         max_rounds = self.config["difficulty"].get("max_rounds")
-        if termination is None and max_rounds is not None and current_round >= max_rounds:
-            done = True
-            termination = "truncation"
-        if termination:
-            info["termination"] = termination
-        else:
+        if completed_round and max_rounds is not None and current_round >= int(max_rounds):
+            truncated = True
+
+        done = terminated or truncated
+        if terminated:
+            info["termination"] = "loss"
+        elif truncated:
+            info["termination"] = "truncation"
+
+        info["terminated"] = terminated
+        info["truncated"] = truncated
+        info["phase"] = self.state.phase
+        info["step"] = self.state.steps
+        info["reward_breakdown"] = reward_breakdown
+
+        if not done and completed_round:
             self.state.round = current_round + 1
+        if completed_round:
+            self.state.last_round = dict(round_info)
 
         return self._observation(), reward, done, info
 
@@ -298,7 +421,7 @@ class TowerDefenseEnv:
         tower_type = self.tower_types[tower.type_name]
         if path not in tower_type.upgrade_paths:
             return False, "unknown_path"
-        current = tower.upgrades.get(path, 0)
+        current = self._get_upgrade_tier(tower, path)
         if current >= len(tower_type.upgrade_paths[path]):
             return False, "max_tier"
         if not self._can_upgrade(tower, path):
@@ -319,7 +442,7 @@ class TowerDefenseEnv:
         return True, ""
 
     def _can_upgrade(self, tower: Tower, path: str) -> bool:
-        upgrades = dict(tower.upgrades)
+        upgrades = {key: self._get_upgrade_tier(tower, key) for key in tower.upgrades.keys()}
         upgrades[path] = upgrades.get(path, 0) + 1
         active_paths = [p for p, tier in upgrades.items() if tier > 0]
         if len(active_paths) > 2:
@@ -332,7 +455,8 @@ class TowerDefenseEnv:
     def _tower_total_cost(self, tower: Tower) -> int:
         total_cost = self.tower_types[tower.type_name].cost
         for path, tier in tower.upgrades.items():
-            for i in range(tier):
+            tier_value = self._get_upgrade_tier(tower, path)
+            for i in range(tier_value):
                 total_cost += self.tower_types[tower.type_name].upgrade_cost(path, i)
         return total_cost
 
@@ -390,17 +514,20 @@ class TowerDefenseEnv:
         self.state.cash += total_cash + end_income
         self.state.lives -= lives_lost
 
-        reward = (
-            total_cash * self.config["rewards"]["pop_reward_multiplier"]
-            + end_income
-            - lives_lost * self.config["rewards"]["life_loss_penalty"]
-        )
+        pop_reward = total_cash * self.config["rewards"]["pop_reward_multiplier"]
+        life_loss_penalty = -lives_lost * self.config["rewards"]["life_loss_penalty"]
+        reward = pop_reward + end_income + life_loss_penalty
         info = {
             "round": current_round,
             "pops": total_pops,
             "cash_earned": total_cash,
             "end_round_income": end_income,
             "lives_lost": lives_lost,
+            "reward_breakdown": {
+                "pop_reward": pop_reward,
+                "end_round_income": float(end_income),
+                "life_loss_penalty": life_loss_penalty,
+            },
         }
         return reward, info
 
@@ -491,21 +618,68 @@ class TowerDefenseEnv:
     def _observation(self) -> Dict[str, Any]:
         if self.state is None:
             raise RuntimeError("state unavailable")
+        obs_config = self.config.get("observation", {})
+        max_build_slots = obs_config.get("max_build_slots")
+        max_towers = obs_config.get("max_towers")
+        max_path_points = obs_config.get("max_path_points")
+
+        path_points = [list(point) for point in self.path]
+        path_truncated = False
+        if max_path_points is not None and len(path_points) > int(max_path_points):
+            path_points = path_points[: int(max_path_points)]
+            path_truncated = True
+
+        build_slots = [list(slot) for slot in sorted(self.build_slots)]
+        build_slots_truncated = False
+        build_slots_omitted = 0
+        if max_build_slots is not None and len(build_slots) > int(max_build_slots):
+            build_slots_omitted = len(build_slots) - int(max_build_slots)
+            build_slots = build_slots[: int(max_build_slots)]
+            build_slots_truncated = True
+
+        towers_sorted = sorted(self.towers.values(), key=lambda t: t.id)
+        towers = [self._tower_summary(tower) for tower in towers_sorted]
+        towers_truncated = False
+        towers_omitted = 0
+        if max_towers is not None and len(towers) > int(max_towers):
+            towers_omitted = len(towers) - int(max_towers)
+            towers = towers[: int(max_towers)]
+            towers_truncated = True
+
         next_wave = self._summarize_wave(self._generate_wave(self.state.round))
+        valid_actions, action_meta = self._valid_actions()
+
         return {
             "round": self.state.round,
+            "phase": self.state.phase,
+            "steps": self.state.steps,
             "lives": self.state.lives,
             "cash": self.state.cash,
             "seed": self.state.seed,
             "map": {
                 "width": self.config["map"]["width"],
                 "height": self.config["map"]["height"],
-                "path": [list(point) for point in self.path],
-                "build_slots": [list(slot) for slot in self.build_slots],
+                "path": path_points,
+                "build_slots": build_slots,
             },
-            "towers": [self._tower_summary(tower) for tower in self.towers.values()],
+            "towers": towers,
             "next_wave": next_wave,
-            "valid_actions": self._valid_actions(),
+            "last_round": dict(self.state.last_round) if self.state.last_round else {},
+            "valid_actions": valid_actions,
+            "action_counts": action_meta["counts"],
+            "action_truncated": action_meta["truncated"],
+            "obs_truncated": {
+                "path": path_truncated,
+                "build_slots": build_slots_truncated,
+                "towers": towers_truncated,
+                "valid_actions": action_meta["truncated"].get("any", False),
+                "threats": next_wave.get("truncated", False),
+            },
+            "omitted_counts": {
+                "build_slots": build_slots_omitted,
+                "towers": towers_omitted,
+                "valid_actions": action_meta["omitted"],
+            },
         }
 
     def _tower_summary(self, tower: Tower) -> Dict[str, Any]:
@@ -514,15 +688,40 @@ class TowerDefenseEnv:
             "type": tower.type_name,
             "x": tower.x,
             "y": tower.y,
-            "upgrades": dict(tower.upgrades),
+            "upgrades": {
+                key: self._get_upgrade_tier(tower, key) for key in sorted(tower.upgrades.keys())
+            },
             "targeting": tower.targeting,
         }
 
-    def _summarize_wave(self, wave: List[str]) -> Dict[str, int]:
+    def _summarize_wave(self, wave: List[str]) -> Dict[str, Any]:
         summary: Dict[str, int] = {}
         for name in wave:
             summary[name] = summary.get(name, 0) + 1
-        return summary
+        threats = []
+        for name, count in summary.items():
+            bloon_type = self.bloon_types[name]
+            threats.append(
+                {
+                    "type": name,
+                    "count": count,
+                    "tier": bloon_type.tier,
+                    "hp": bloon_type.hp,
+                    "speed": bloon_type.speed,
+                }
+            )
+        threats.sort(key=lambda t: (-t["tier"], -t["count"], t["type"]))
+        max_threats = self.config.get("observation", {}).get("max_threats")
+        truncated = False
+        if max_threats is not None and len(threats) > int(max_threats):
+            threats = threats[: int(max_threats)]
+            truncated = True
+        return {
+            "counts": summary,
+            "total": len(wave),
+            "top_threats": threats,
+            "truncated": truncated,
+        }
 
     def _available_build_slots(self) -> List[Tuple[int, int]]:
         occupied = {(tower.x, tower.y) for tower in self.towers.values()}
@@ -548,17 +747,46 @@ class TowerDefenseEnv:
             normalized.append((x, y))
         return normalized
 
-    def _valid_actions(self) -> Dict[str, Any]:
+    def _valid_actions(self) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if self.state is None:
-            return {"build": [], "upgrade": [], "sell": [], "noop": True}
+            return {
+                "build": [],
+                "upgrade": [],
+                "sell": [],
+                "start_round": False,
+                "noop": True,
+            }, {
+                "counts": {"build": 0, "upgrade": 0, "sell": 0},
+                "truncated": {"build": False, "upgrade": False, "sell": False, "any": False},
+                "omitted": {"build": 0, "upgrade": 0, "sell": 0},
+            }
+
+        if self.state.phase != "build":
+            return {
+                "build": [],
+                "upgrade": [],
+                "sell": [],
+                "start_round": False,
+                "noop": True,
+            }, {
+                "counts": {"build": 0, "upgrade": 0, "sell": 0},
+                "truncated": {"build": False, "upgrade": False, "sell": False, "any": False},
+                "omitted": {"build": 0, "upgrade": 0, "sell": 0},
+            }
+
         cash = self.state.cash
-        max_candidates = self.config.get("observation", {}).get("max_action_candidates")
+        obs_cfg = self.config.get("observation", {})
+        max_candidates = obs_cfg.get("max_action_candidates")
+        max_build_slots = obs_cfg.get("max_build_slots")
         build_actions: List[Dict[str, Any]] = []
+        available_slots = self._available_build_slots()
+        if max_build_slots is not None and len(available_slots) > int(max_build_slots):
+            available_slots = available_slots[: int(max_build_slots)]
         for tower_name in sorted(self.tower_types.keys()):
             tower_type = self.tower_types[tower_name]
             if cash < tower_type.cost:
                 continue
-            for x, y in self._available_build_slots():
+            for x, y in available_slots:
                 build_actions.append(
                     {
                         "type": "build",
@@ -574,7 +802,7 @@ class TowerDefenseEnv:
             tower = self.towers[tower_id]
             tower_type = self.tower_types[tower.type_name]
             for path in sorted(tower_type.upgrade_paths.keys()):
-                current = tower.upgrades.get(path, 0)
+                current = self._get_upgrade_tier(tower, path)
                 if current >= len(tower_type.upgrade_paths[path]):
                     continue
                 if not self._can_upgrade(tower, path):
@@ -600,18 +828,37 @@ class TowerDefenseEnv:
             for tower_id in sorted(self.towers.keys())
         ]
 
+        counts = {
+            "build": len(build_actions),
+            "upgrade": len(upgrade_actions),
+            "sell": len(sell_actions),
+        }
+        truncated = {"build": False, "upgrade": False, "sell": False, "any": False}
+        omitted = {"build": 0, "upgrade": 0, "sell": 0}
+
         if max_candidates is not None:
             max_candidates = max(0, int(max_candidates))
-            build_actions = build_actions[:max_candidates]
-            upgrade_actions = upgrade_actions[:max_candidates]
-            sell_actions = sell_actions[:max_candidates]
+            if len(build_actions) > max_candidates:
+                omitted["build"] = len(build_actions) - max_candidates
+                build_actions = build_actions[:max_candidates]
+                truncated["build"] = True
+            if len(upgrade_actions) > max_candidates:
+                omitted["upgrade"] = len(upgrade_actions) - max_candidates
+                upgrade_actions = upgrade_actions[:max_candidates]
+                truncated["upgrade"] = True
+            if len(sell_actions) > max_candidates:
+                omitted["sell"] = len(sell_actions) - max_candidates
+                sell_actions = sell_actions[:max_candidates]
+                truncated["sell"] = True
+            truncated["any"] = truncated["build"] or truncated["upgrade"] or truncated["sell"]
 
         return {
             "build": build_actions,
             "upgrade": upgrade_actions,
             "sell": sell_actions,
+            "start_round": True,
             "noop": True,
-        }
+        }, {"counts": counts, "truncated": truncated, "omitted": omitted}
 
     def _init_path(self) -> List[Tuple[int, int]]:
         config_path = self.config["map"].get("path")
@@ -694,7 +941,229 @@ class TowerDefenseEnv:
         return ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2) ** 0.5
 
 
-def load_environment(config: Dict[str, Any]) -> TowerDefenseEnv:
-    """Prime Intellect verifiers entrypoint."""
+ACTION_TYPES = {"build", "upgrade", "sell", "start_round", "noop"}
+FORMAT_INVALID_REWARD = -5.0
+MAX_ACTION_CHARS = 256
 
-    return TowerDefenseEnv(config)
+SYSTEM_PROMPT = (
+    "You are playing a tower-defense game. Respond with ONLY a single JSON action "
+    "object and no extra text. Examples: "
+    "{\"type\": \"build\", \"tower_type\": \"dart\", \"x\": 0, \"y\": 0} "
+    "{\"type\": \"upgrade\", \"tower_id\": 1, \"path\": \"a\"} "
+    "{\"type\": \"sell\", \"tower_id\": 1} "
+    "{\"type\": \"start_round\"} "
+    "{\"type\": \"noop\"}."
+)
+
+
+def _completion_to_text(completion: vf.Messages) -> str:
+    if isinstance(completion, list) and completion:
+        return str(completion[-1].get("content", ""))
+    return str(completion or "")
+
+
+def _strip_code_fences(text: str) -> str:
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        stripped = stripped.strip("`")
+    return stripped.strip()
+
+
+def _extract_json_object(text: str) -> Tuple[Dict[str, Any] | None, bool]:
+    """Return (action, strict_match) where strict_match means no extra text."""
+    raw = _strip_code_fences(text)
+    if not raw:
+        return None, False
+    if len(raw) > MAX_ACTION_CHARS:
+        return None, False
+    try:
+        parsed = json.loads(raw)
+        return parsed, True
+    except Exception:
+        pass
+    match = re.search(r"\{.*\}", raw, flags=re.DOTALL)
+    if not match:
+        return None, False
+    candidate = match.group(0)
+    if len(candidate) > MAX_ACTION_CHARS:
+        return None, False
+    try:
+        parsed = json.loads(candidate)
+        strict = candidate.strip() == raw.strip()
+        return parsed, strict
+    except Exception:
+        return None, False
+
+
+def _coerce_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _normalize_action(action: Dict[str, Any]) -> Dict[str, Any] | None:
+    if not isinstance(action, dict):
+        return None
+    action_type = action.get("type")
+    if action_type not in ACTION_TYPES:
+        return None
+    if action_type == "build":
+        x = _coerce_int(action.get("x"))
+        y = _coerce_int(action.get("y"))
+        tower_type = action.get("tower_type")
+        if x is None or y is None or not isinstance(tower_type, str):
+            return None
+        return {"type": "build", "tower_type": tower_type, "x": x, "y": y}
+    if action_type == "upgrade":
+        tower_id = _coerce_int(action.get("tower_id"))
+        path = action.get("path")
+        if tower_id is None or path not in {"a", "b", "c"}:
+            return None
+        return {"type": "upgrade", "tower_id": tower_id, "path": path}
+    if action_type == "sell":
+        tower_id = _coerce_int(action.get("tower_id"))
+        if tower_id is None:
+            return None
+        return {"type": "sell", "tower_id": tower_id}
+    if action_type == "start_round":
+        return {"type": "start_round"}
+    return {"type": "noop"}
+
+
+def _parse_action_text(text: str) -> Tuple[Dict[str, Any] | None, bool]:
+    action, strict = _extract_json_object(text)
+    if action is None:
+        return None, False
+    normalized = _normalize_action(action)
+    if normalized is None:
+        return None, False
+    return normalized, strict
+
+
+_ACTIVE_CONFIG: Dict[str, Any] = DEFAULT_CONFIG
+
+
+def _sample_action(obs: Dict[str, Any], rng: random.Random, policy: str) -> Dict[str, Any]:
+    valid_actions = obs.get("valid_actions", {})
+    actions: List[Dict[str, Any]] = []
+    for key in ("build", "upgrade", "sell"):
+        actions.extend(valid_actions.get(key, []))
+    if valid_actions.get("start_round"):
+        actions.append({"type": "start_round"})
+    if valid_actions.get("noop"):
+        actions.append({"type": "noop"})
+
+    if policy == "noop" or not actions:
+        return {"type": "noop"}
+    if policy == "advance":
+        return {"type": "start_round"}
+    return actions[int(rng.random() * len(actions))]
+
+
+def _build_dataset(
+    config: Dict[str, Any],
+    num_examples: int,
+    seed_start: int,
+) -> Dataset:
+    prompts: List[List[Dict[str, str]]] = []
+    infos: List[Dict[str, Any]] = []
+    simulator = TowerDefenseEnv(config)
+    dataset_cfg = config.get("dataset", {}) if isinstance(config.get("dataset"), dict) else {}
+    rollout_steps = int(dataset_cfg.get("rollout_steps", 0))
+    policy = str(dataset_cfg.get("policy", "random"))
+
+    for i in range(num_examples):
+        seed = seed_start + i
+        obs = simulator.reset(seed=seed)
+        rng = random.Random(seed + 101)
+        for _ in range(max(0, rollout_steps)):
+            action = _sample_action(obs, rng, policy)
+            obs, _reward, done, _info = simulator.step(action)
+            if done:
+                break
+        prompt = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": f"Observation: {json.dumps(obs, sort_keys=True)}"},
+        ]
+        prompts.append(prompt)
+        infos.append({"seed": seed, "obs": obs})
+    return Dataset.from_dict({"prompt": prompts, "info": infos, "task": ["train"] * num_examples})
+
+
+def _reward_from_action(
+    prompt: vf.Messages,
+    completion: vf.Messages,
+    answer: str,
+    state: vf.State,
+    task: str = "default",
+    info: vf.Info | None = None,
+    **_kwargs: Any,
+) -> float:
+    info = info or {}
+    content = _completion_to_text(completion)
+    action, _strict = _parse_action_text(content)
+    if action is None:
+        return FORMAT_INVALID_REWARD
+    simulator = TowerDefenseEnv(_ACTIVE_CONFIG)
+    obs = info.get("obs")
+    if isinstance(obs, dict):
+        simulator.load_from_observation(obs)
+    else:
+        seed = int(info.get("seed", 0))
+        simulator.reset(seed=seed)
+    _obs, reward, _done, _info = simulator.step(action)
+    return float(reward)
+
+
+def _format_reward(
+    prompt: vf.Messages,
+    completion: vf.Messages,
+    answer: str,
+    state: vf.State,
+    task: str = "default",
+    info: vf.Info | None = None,
+    **_kwargs: Any,
+) -> float:
+    content = _completion_to_text(completion)
+    _action, strict = _parse_action_text(content)
+    if _action is None:
+        return -1.0
+    return 1.0 if strict else 0.0
+
+
+class TowerDefenseVerifiersEnv(vf.SingleTurnEnv):
+    """Verifiers-compatible wrapper for hosted training."""
+
+    def __init__(
+        self,
+        config: Dict[str, Any],
+        num_examples: int = 64,
+        seed_start: int = 0,
+        **kwargs: Any,
+    ):
+        self.env_id: str | None = None
+        self.env_args: Dict[str, Any] | None = None
+        global _ACTIVE_CONFIG
+        _ACTIVE_CONFIG = config
+        dataset = _build_dataset(config, num_examples, seed_start)
+        weight_cfg = config.get("reward_weights", {}) if isinstance(config.get("reward_weights"), dict) else {}
+        format_weight = float(weight_cfg.get("format", 0.5))
+        env_weight = float(weight_cfg.get("env", 1.0))
+        rubric = vf.Rubric(funcs=[_format_reward, _reward_from_action], weights=[format_weight, env_weight])
+        super().__init__(dataset=dataset, rubric=rubric, **kwargs)
+
+
+def load_environment(
+    config: Dict[str, Any] | None = None,
+    num_examples: int = 64,
+    seed_start: int = 0,
+    **_kwargs: Any,
+) -> vf.Environment:
+    """Prime Intellect verifiers entrypoint."""
+    return TowerDefenseVerifiersEnv(config or DEFAULT_CONFIG, num_examples, seed_start)

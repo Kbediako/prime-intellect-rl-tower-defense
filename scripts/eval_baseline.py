@@ -11,7 +11,7 @@ import numpy as np
 
 from prime_td_env.environment import load_environment
 
-ACTION_TYPES = ["build", "upgrade", "sell", "noop"]
+ACTION_TYPES = ["build", "upgrade", "sell", "start_round", "noop"]
 UPGRADE_PATHS = ["a", "b", "c"]
 
 
@@ -19,6 +19,8 @@ def flatten_actions(valid_actions: Dict[str, Any]) -> List[Dict[str, Any]]:
     actions: List[Dict[str, Any]] = []
     for key in ("build", "upgrade", "sell"):
         actions.extend(valid_actions.get(key, []))
+    if valid_actions.get("start_round"):
+        actions.append({"type": "start_round"})
     if valid_actions.get("noop"):
         actions.append({"type": "noop"})
     return actions
@@ -97,7 +99,7 @@ def run_episode(
     rng: np.random.Generator,
     epsilon: float,
     max_steps: int | None,
-) -> Tuple[float, int, int, int, Dict[str, int], str]:
+) -> Tuple[float, int, int, int, Dict[str, int], str, int]:
     obs = env.reset(seed=seed)
     tower_types = sorted(env.tower_types.keys())
     total_reward = 0.0
@@ -120,7 +122,7 @@ def run_episode(
         obs = next_obs
         if done or (max_steps is not None and steps >= max_steps):
             termination = info.get("termination", "")
-            return total_reward, obs["round"], steps, invalid_actions, action_counts, termination
+            return total_reward, obs["round"], steps, invalid_actions, action_counts, termination, obs["lives"]
 
 
 def main() -> None:
@@ -133,7 +135,7 @@ def main() -> None:
     parser.add_argument("--max-rounds", type=int, default=20)
     parser.add_argument("--no-round-cap", action="store_true")
     parser.add_argument("--max-action-candidates", type=int, default=200)
-    parser.add_argument("--max-steps", type=int, default=None)
+    parser.add_argument("--max-steps", type=int, default=200)
     parser.add_argument("--weights", type=str, default="")
     parser.add_argument("--output", type=str, default="")
     args = parser.parse_args()
@@ -141,6 +143,7 @@ def main() -> None:
     config: Dict[str, Any] = {
         "observation": {"max_action_candidates": args.max_action_candidates},
         "difficulty": {},
+        "episode": {"max_steps": args.max_steps},
     }
     if args.no_round_cap:
         config["difficulty"]["max_rounds"] = None
@@ -161,13 +164,14 @@ def main() -> None:
 
     rewards: List[float] = []
     rounds: List[int] = []
+    lives_remaining: List[int] = []
     steps_list: List[int] = []
     invalid_total = 0
     action_counts = {name: 0 for name in ACTION_TYPES}
     termination_counts: Dict[str, int] = {}
 
     for seed in seeds:
-        reward, round_reached, steps, invalid_actions, episode_action_counts, termination = run_episode(
+        reward, round_reached, steps, invalid_actions, episode_action_counts, termination, lives_left = run_episode(
             env,
             seed,
             weights,
@@ -177,6 +181,7 @@ def main() -> None:
         )
         rewards.append(reward)
         rounds.append(round_reached)
+        lives_remaining.append(lives_left)
         steps_list.append(steps)
         invalid_total += invalid_actions
         for action_type, count in episode_action_counts.items():
@@ -195,7 +200,9 @@ def main() -> None:
         "avg_reward": avg_reward,
         "avg_round": avg_round,
         "avg_steps": avg_steps,
+        "avg_lives_remaining": float(np.mean(lives_remaining)) if lives_remaining else 0.0,
         "invalid_action_rate": invalid_rate,
+        "invalid_json_rate": 0.0,
         "reward_std": float(np.std(rewards)) if rewards else 0.0,
         "round_std": float(np.std(rounds)) if rounds else 0.0,
         "termination_counts": termination_counts,

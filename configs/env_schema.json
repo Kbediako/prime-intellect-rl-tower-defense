@@ -52,6 +52,17 @@
       },
       "required": ["starting_cash", "starting_lives"]
     },
+    "episode": {
+      "type": "object",
+      "properties": {
+        "max_steps": {
+          "anyOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
     "difficulty": {
       "type": "object",
       "properties": {
@@ -77,7 +88,15 @@
       "properties": {
         "pop_reward_multiplier": {"type": "number", "minimum": 0},
         "life_loss_penalty": {"type": "number", "minimum": 0},
-        "invalid_action_penalty": {"type": "number", "minimum": 0}
+        "invalid_action_penalty": {"type": "number", "minimum": 0},
+        "step_penalty": {"type": "number", "minimum": 0}
+      }
+    },
+    "reward_weights": {
+      "type": "object",
+      "properties": {
+        "format": {"type": "number", "minimum": 0},
+        "env": {"type": "number", "minimum": 0}
       }
     },
     "observation": {
@@ -88,7 +107,38 @@
             {"type": "integer", "minimum": 0},
             {"type": "null"}
           ]
+        },
+        "max_build_slots": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "max_towers": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "max_threats": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "max_path_points": {
+          "anyOf": [
+            {"type": "integer", "minimum": 2},
+            {"type": "null"}
+          ]
         }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "properties": {
+        "rollout_steps": {"type": "integer", "minimum": 0},
+        "policy": {"type": "string"}
       }
     },
     "towers": {

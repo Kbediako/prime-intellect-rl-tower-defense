@@ -8,6 +8,10 @@ Text-first tower-defense environment designed for Prime Intellect hosted RFT (pr
 - Baseline training + evaluation harness.
 - Infinite rounds default (set `difficulty.max_rounds` to cap episodes).
 
+## Action phases
+- Agent acts between rounds (build/upgrade/sell/noop).
+- Use `start_round` to advance the wave to completion.
+
 ## Repo layout
 - `src/prime_td_env/`: environment package
 - `configs/`: environment schemas + default configs
@@ -30,6 +34,12 @@ Run seeded evaluation and emit aggregate metrics:
 PYTHONPATH=src python3 scripts/eval_baseline.py --episodes 10 --max-rounds 20 --output out/metrics.json
 ```
 
+For deterministic suites + JSONL summaries:
+
+```bash
+PYTHONPATH=src python3 scripts/eval.py --eval-seed-count 50 --random-seed-count 20 --output-dir out/eval
+```
+
 ## Prime RL hosted training
 Hosted training runs use TOML configs with `prime rl run` and require a verifiers-compatible environment
 published to the Prime Environments Hub. This repo includes a starter template at
@@ -44,6 +54,7 @@ Suggested setup steps (per Prime docs):
 Notes:
 - Pass secrets via `env_file` or `prime rl run -e KEY=VALUE`; avoid hardcoding credentials in `args`.
 - Use env args for variable names (e.g., `api_key_var`) and read them via `os.getenv`.
+- Copy `configs/lab/secrets.env.example` to `configs/lab/secrets.env` for local runs (not committed).
 
 ## Prime Inference auth check
 Verify credentials and list available models:

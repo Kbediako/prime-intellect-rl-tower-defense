@@ -8,8 +8,10 @@
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | A | completed | `cpe5e60oplhmtdsa3byqc6ro` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-a.toml` | baseline weights + sampling |
 | B | completed | `y788w0uxqiormzp81q1poq41` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-b.toml` | tuned weights + tighter sampling |
-| C | running | `dw5b1xkhx8sj4ny9ljgvvqml` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-c.toml` | rollout_steps=0 curriculum change |
-| D | running | `ds2s6uije2q9z4t9ny1e70fb` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-d.toml` | rollout_steps=0 + lower step penalty |
+| C | stopped | `dw5b1xkhx8sj4ny9ljgvvqml` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-c.toml` | rollout_steps=0 curriculum change |
+| D | stopped | `ds2s6uije2q9z4t9ny1e70fb` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-d.toml` | rollout_steps=0 + lower step penalty |
+| E | running | `xc662lm8afgdz25dc0a7dhdu` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-e.toml` | rollout_steps=1 diagnostic |
+| F | running | `u1uxany3ub4g7gab3aofd7gh` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-f.toml` | rollout_steps=1 + lower step penalty |
 
 ## Run A Snapshot (exact config)
 
@@ -33,6 +35,8 @@ Secondary deltas (explicit):
 - **Tighter sampling** in B (`temperature=0.15`, `max_tokens=48`).
 - **Run C** keeps B settings but sets `dataset.rollout_steps=0` to remove tower-seeded prompts.
 - **Run D** keeps C settings but lowers `step_penalty` back to `0.1`.
+- **Run E** uses `rollout_steps=1` (single-step curriculum) with B reward settings.
+- **Run F** uses `rollout_steps=1` with lower `step_penalty=0.1`.
 
 ## Eval Protocol (fixed + deterministic)
 

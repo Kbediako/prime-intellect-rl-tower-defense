@@ -1,0 +1,94 @@
+# Short run H (lookahead shaping weight=0.5).
+name = "prime-td-run-h"
+model = "Qwen/Qwen3-4B-Instruct-2507"
+max_steps = 80
+batch_size = 128
+rollouts_per_example = 4
+
+env_file = ["secrets.env"]
+
+[sampling]
+max_tokens = 48
+temperature = 0.15
+
+[[env]]
+id = "kbediako/prime-td-env"
+
+[env.args]
+num_examples = 64
+seed_start = 0
+
+[env.args.config.difficulty]
+max_rounds = 20
+
+[env.args.config.episode]
+max_steps = 200
+
+[env.args.config.rewards]
+step_penalty = 0.1
+invalid_action_penalty = 1.0
+life_loss_penalty = 10.0
+pop_reward_multiplier = 1.0
+
+[env.args.config.reward_weights]
+format = 0.25
+env = 1.0
+
+[env.args.config.reward_shaping]
+enable_lookahead = true
+lookahead_rounds = 8
+lookahead_weight = 0.5
+
+[env.args.config.observation]
+max_action_candidates = 200
+max_build_slots = 120
+max_towers = 50
+max_threats = 5
+
+[env.args.config.dataset]
+rollout_steps = 1
+policy = "random"
+
+[eval]
+interval = 20
+num_examples = 50
+rollouts_per_example = 1
+eval_base_model = true
+
+[[eval.env]]
+id = "kbediako/prime-td-env"
+
+[eval.env.args]
+num_examples = 50
+seed_start = 1000
+
+[eval.env.args.config.difficulty]
+max_rounds = 20
+
+[eval.env.args.config.episode]
+max_steps = 200
+
+[eval.env.args.config.rewards]
+step_penalty = 0.1
+invalid_action_penalty = 1.0
+life_loss_penalty = 10.0
+pop_reward_multiplier = 1.0
+
+[eval.env.args.config.reward_weights]
+format = 0.25
+env = 1.0
+
+[eval.env.args.config.reward_shaping]
+enable_lookahead = true
+lookahead_rounds = 8
+lookahead_weight = 0.5
+
+[eval.env.args.config.observation]
+max_action_candidates = 200
+max_build_slots = 120
+max_towers = 50
+max_threats = 5
+
+[eval.env.args.config.dataset]
+rollout_steps = 1
+policy = "random"

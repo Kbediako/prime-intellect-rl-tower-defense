@@ -138,6 +138,14 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "invalid_action_penalty": 1.0,
         "step_penalty": 0.1,
     },
+    "reward_shaping": {
+        "enable_lookahead": False,
+        "lookahead_rounds": 1,
+        "lookahead_weight": 0.5,
+    },
+    "rules": {
+        "require_tower_before_start": False,
+    },
     "reward_weights": {
         "format": 0.5,
         "env": 1.0,
@@ -337,10 +345,15 @@ class TowerDefenseEnv:
             invalid_action = not ok
             invalid_reason = reason
         elif action_type == "start_round":
-            reward, round_info = self._simulate_round()
-            reward_breakdown.update(round_info.get("reward_breakdown", {}))
-            info.update(round_info)
-            completed_round = True
+            require_tower = bool(self.config.get("rules", {}).get("require_tower_before_start", False))
+            if require_tower and not self.towers:
+                invalid_action = True
+                invalid_reason = "no_towers"
+            else:
+                reward, round_info = self._simulate_round()
+                reward_breakdown.update(round_info.get("reward_breakdown", {}))
+                info.update(round_info)
+                completed_round = True
         elif action_type == "noop":
             pass
         else:
@@ -725,7 +738,12 @@ class TowerDefenseEnv:
 
     def _available_build_slots(self) -> List[Tuple[int, int]]:
         occupied = {(tower.x, tower.y) for tower in self.towers.values()}
-        return sorted([slot for slot in self.build_slots if slot not in occupied])
+        slots = [slot for slot in self.build_slots if slot not in occupied]
+        return sorted(slots, key=lambda slot: (self._distance_sq_to_path(slot), slot[0], slot[1]))
+
+    def _distance_sq_to_path(self, slot: Tuple[int, int]) -> float:
+        x, y = slot
+        return min((x - px) ** 2 + (y - py) ** 2 for px, py in self.path)
 
     def _normalize_points(
         self,
@@ -852,11 +870,13 @@ class TowerDefenseEnv:
                 truncated["sell"] = True
             truncated["any"] = truncated["build"] or truncated["upgrade"] or truncated["sell"]
 
+        require_tower = bool(self.config.get("rules", {}).get("require_tower_before_start", False))
+        start_round_allowed = not require_tower or bool(self.towers)
         return {
             "build": build_actions,
             "upgrade": upgrade_actions,
             "sell": sell_actions,
-            "start_round": True,
+            "start_round": start_round_allowed,
             "noop": True,
         }, {"counts": counts, "truncated": truncated, "omitted": omitted}
 
@@ -1063,6 +1083,16 @@ def _sample_action(obs: Dict[str, Any], rng: random.Random, policy: str) -> Dict
         return {"type": "noop"}
     if policy == "advance":
         return {"type": "start_round"}
+    if policy == "bootstrap":
+        towers = obs.get("towers", [])
+        build_actions = valid_actions.get("build", [])
+        if not towers and build_actions:
+            return build_actions[0]
+        if valid_actions.get("start_round"):
+            return {"type": "start_round"}
+        if build_actions:
+            return build_actions[0]
+        return {"type": "noop"}
     return actions[int(rng.random() * len(actions))]
 
 
@@ -1118,6 +1148,30 @@ def _reward_from_action(
         seed = int(info.get("seed", 0))
         simulator.reset(seed=seed)
     _obs, reward, _done, _info = simulator.step(action)
+    shaping_cfg = _ACTIVE_CONFIG.get("reward_shaping", {}) if isinstance(_ACTIVE_CONFIG.get("reward_shaping"), dict) else {}
+    if (
+        action.get("type") != "start_round"
+        and shaping_cfg.get("enable_lookahead")
+        and isinstance(obs, dict)
+    ):
+        lookahead_rounds = max(0, int(shaping_cfg.get("lookahead_rounds", 1)))
+        lookahead_weight = float(shaping_cfg.get("lookahead_weight", 0.5))
+        if lookahead_rounds > 0 and lookahead_weight > 0:
+            baseline = TowerDefenseEnv(_ACTIVE_CONFIG)
+            baseline.load_from_observation(obs)
+
+            def _simulate_rounds(env: TowerDefenseEnv, count: int) -> float:
+                total = 0.0
+                for _ in range(count):
+                    _o, r, done, _i = env.step({"type": "start_round"})
+                    total += float(r)
+                    if done:
+                        break
+                return total
+
+            baseline_future = _simulate_rounds(baseline, lookahead_rounds)
+            after_future = 0.0 if _done else _simulate_rounds(simulator, lookahead_rounds)
+            reward += lookahead_weight * (after_future - baseline_future)
     return float(reward)
 
 

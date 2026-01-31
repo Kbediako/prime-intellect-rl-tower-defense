@@ -92,6 +92,20 @@
         "step_penalty": {"type": "number", "minimum": 0}
       }
     },
+    "reward_shaping": {
+      "type": "object",
+      "properties": {
+        "enable_lookahead": {"type": "boolean"},
+        "lookahead_rounds": {"type": "integer", "minimum": 0},
+        "lookahead_weight": {"type": "number", "minimum": 0}
+      }
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "require_tower_before_start": {"type": "boolean"}
+      }
+    },
     "reward_weights": {
       "type": "object",
       "properties": {

@@ -21,6 +21,8 @@ class EnvState:
     steps: int = 0
     phase: str = "build"
     last_round: Dict[str, Any] = field(default_factory=dict)
+    prep_actions_remaining: int = 1
+    prep_actions_max: int = 1
 
 
 @dataclass
@@ -145,6 +147,10 @@ DEFAULT_CONFIG: Dict[str, Any] = {
     },
     "rules": {
         "require_tower_before_start": False,
+        "auto_advance_round": False,
+        "prep_actions_per_round": 1,
+        "prep_actions_round_scale": 0.0,
+        "prep_actions_max": None,
     },
     "reward_weights": {
         "format": 0.5,
@@ -232,6 +238,30 @@ class TowerDefenseEnv:
         self.next_tower_id = 1
         self.next_bloon_id = 1
 
+    def _prep_actions_for_round(self, round_number: int) -> int:
+        rules = self.config.get("rules", {}) if isinstance(self.config.get("rules"), dict) else {}
+        auto_advance = bool(rules.get("auto_advance_round", False))
+        if not auto_advance:
+            return 1
+        base = _coerce_int(rules.get("prep_actions_per_round"))
+        base = 1 if base is None else max(1, base)
+        scale = float(rules.get("prep_actions_round_scale", 0.0) or 0.0)
+        if scale < 0:
+            scale = 0.0
+        extra = int((max(1, round_number) - 1) * scale)
+        total = max(1, base + extra)
+        max_cap = _coerce_int(rules.get("prep_actions_max"))
+        if max_cap is not None:
+            total = min(total, max(1, max_cap))
+        return total
+
+    def _reset_prep_actions(self) -> None:
+        if self.state is None:
+            return
+        total = self._prep_actions_for_round(self.state.round)
+        self.state.prep_actions_max = total
+        self.state.prep_actions_remaining = total
+
     def _normalize_upgrades(self, tower_type: TowerType, upgrades: Any) -> Dict[str, int]:
         if not isinstance(upgrades, dict):
             return {}
@@ -259,6 +289,7 @@ class TowerDefenseEnv:
             phase="build",
             last_round={},
         )
+        self._reset_prep_actions()
         self.towers = {}
         self.next_tower_id = 1
         self.next_bloon_id = 1
@@ -277,6 +308,18 @@ class TowerDefenseEnv:
             steps=int(obs.get("steps", 0)),
             phase=str(obs.get("phase", "build")),
             last_round=dict(obs.get("last_round", {}) or {}),
+        )
+        round_number = self.state.round
+        prep_max = _coerce_int(obs.get("prep_actions_max"))
+        if prep_max is None:
+            prep_max = self._prep_actions_for_round(round_number)
+        prep_remaining = _coerce_int(obs.get("prep_actions_remaining"))
+        if prep_remaining is None:
+            prep_remaining = prep_max
+        self.state.prep_actions_max = max(1, int(prep_max))
+        self.state.prep_actions_remaining = max(
+            0,
+            min(int(prep_remaining), self.state.prep_actions_max),
         )
         map_obs = obs.get("map", {}) if isinstance(obs.get("map"), dict) else {}
         if map_obs.get("path"):
@@ -329,9 +372,17 @@ class TowerDefenseEnv:
             action = {"type": "noop"}
 
         action_type = action.get("type", "noop")
+        auto_advance = bool(self.config.get("rules", {}).get("auto_advance_round", False))
+        require_tower = bool(self.config.get("rules", {}).get("require_tower_before_start", False))
+        advance_round = False
+        prep_budget_exhausted = auto_advance and self.state.prep_actions_remaining <= 0
+
         if self.state.phase != "build":
             invalid_action = True
             invalid_reason = "wrong_phase"
+        elif prep_budget_exhausted and action_type in {"build", "upgrade", "sell"}:
+            invalid_action = True
+            invalid_reason = "prep_budget_exhausted"
         elif action_type == "build":
             ok, reason = self._apply_build(action)
             invalid_action = not ok
@@ -345,20 +396,31 @@ class TowerDefenseEnv:
             invalid_action = not ok
             invalid_reason = reason
         elif action_type == "start_round":
-            require_tower = bool(self.config.get("rules", {}).get("require_tower_before_start", False))
+            advance_round = True
             if require_tower and not self.towers:
                 invalid_action = True
                 invalid_reason = "no_towers"
-            else:
-                reward, round_info = self._simulate_round()
-                reward_breakdown.update(round_info.get("reward_breakdown", {}))
-                info.update(round_info)
-                completed_round = True
         elif action_type == "noop":
             pass
         else:
             invalid_action = True
             invalid_reason = "unknown_action"
+
+        if auto_advance:
+            if self.state.prep_actions_remaining > 0:
+                self.state.prep_actions_remaining -= 1
+            if advance_round:
+                self.state.prep_actions_remaining = 0
+            if advance_round or self.state.prep_actions_remaining <= 0:
+                reward, round_info = self._simulate_round()
+                reward_breakdown.update(round_info.get("reward_breakdown", {}))
+                info.update(round_info)
+                completed_round = True
+        elif advance_round and not invalid_action:
+            reward, round_info = self._simulate_round()
+            reward_breakdown.update(round_info.get("reward_breakdown", {}))
+            info.update(round_info)
+            completed_round = True
 
         reward = reward_breakdown["pop_reward"] + reward_breakdown["end_round_income"] + reward_breakdown["life_loss_penalty"]
 
@@ -397,9 +459,10 @@ class TowerDefenseEnv:
         info["step"] = self.state.steps
         info["reward_breakdown"] = reward_breakdown
 
-        if not done and completed_round:
-            self.state.round = current_round + 1
         if completed_round:
+            if not done:
+                self.state.round = current_round + 1
+                self._reset_prep_actions()
             self.state.last_round = dict(round_info)
 
         return self._observation(), reward, done, info
@@ -669,6 +732,8 @@ class TowerDefenseEnv:
             "lives": self.state.lives,
             "cash": self.state.cash,
             "seed": self.state.seed,
+            "prep_actions_remaining": self.state.prep_actions_remaining,
+            "prep_actions_max": self.state.prep_actions_max,
             "map": {
                 "width": self.config["map"]["width"],
                 "height": self.config["map"]["height"],
@@ -785,6 +850,22 @@ class TowerDefenseEnv:
                 "upgrade": [],
                 "sell": [],
                 "start_round": False,
+                "noop": True,
+            }, {
+                "counts": {"build": 0, "upgrade": 0, "sell": 0},
+                "truncated": {"build": False, "upgrade": False, "sell": False, "any": False},
+                "omitted": {"build": 0, "upgrade": 0, "sell": 0},
+            }
+
+        auto_advance = bool(self.config.get("rules", {}).get("auto_advance_round", False))
+        if auto_advance and self.state.prep_actions_remaining <= 0:
+            require_tower = bool(self.config.get("rules", {}).get("require_tower_before_start", False))
+            start_round_allowed = not require_tower or bool(self.towers)
+            return {
+                "build": [],
+                "upgrade": [],
+                "sell": [],
+                "start_round": start_round_allowed,
                 "noop": True,
             }, {
                 "counts": {"build": 0, "upgrade": 0, "sell": 0},
@@ -1149,10 +1230,13 @@ def _reward_from_action(
         simulator.reset(seed=seed)
     _obs, reward, _done, _info = simulator.step(action)
     shaping_cfg = _ACTIVE_CONFIG.get("reward_shaping", {}) if isinstance(_ACTIVE_CONFIG.get("reward_shaping"), dict) else {}
+    rules_cfg = _ACTIVE_CONFIG.get("rules", {}) if isinstance(_ACTIVE_CONFIG.get("rules"), dict) else {}
+    auto_advance = bool(rules_cfg.get("auto_advance_round", False))
     if (
         action.get("type") != "start_round"
         and shaping_cfg.get("enable_lookahead")
         and isinstance(obs, dict)
+        and not auto_advance
     ):
         lookahead_rounds = max(0, int(shaping_cfg.get("lookahead_rounds", 1)))
         lookahead_weight = float(shaping_cfg.get("lookahead_weight", 0.5))

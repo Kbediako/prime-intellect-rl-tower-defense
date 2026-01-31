@@ -32,6 +32,12 @@ pop_reward_multiplier = 1.0
 format = 0.5
 env = 1.0
 
+[env.args.config.rules]
+auto_advance_round = true
+prep_actions_per_round = 2
+prep_actions_round_scale = 0.1
+prep_actions_max = 6
+
 [env.args.config.observation]
 max_action_candidates = 200
 max_build_slots = 120

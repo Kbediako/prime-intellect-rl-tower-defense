@@ -103,7 +103,16 @@
     "rules": {
       "type": "object",
       "properties": {
-        "require_tower_before_start": {"type": "boolean"}
+        "require_tower_before_start": {"type": "boolean"},
+        "auto_advance_round": {"type": "boolean"},
+        "prep_actions_per_round": {"type": "integer", "minimum": 1},
+        "prep_actions_round_scale": {"type": "number", "minimum": 0},
+        "prep_actions_max": {
+          "anyOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        }
       }
     },
     "reward_weights": {

@@ -12,8 +12,8 @@
 | D | stopped | `ds2s6uije2q9z4t9ny1e70fb` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-d.toml` | rollout_steps=0 + lower step penalty |
 | E | running | `xc662lm8afgdz25dc0a7dhdu` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-e.toml` | rollout_steps=1 diagnostic |
 | F | running | `u1uxany3ub4g7gab3aofd7gh` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-f.toml` | rollout_steps=1 + lower step penalty |
-| H | stopped | `qneh03aqbtjrvj4hu7be4n9u` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-h.toml` | lookahead_rounds=8, weight=0.5 |
-| J | completed | `3vqru23s1r2m486w7yl88a8o` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-j.toml` | lookahead_rounds=2, weight=0.5 + rollout_steps=4 |
+| H | stopped | `z95gkb5x662h6selsv4125rn` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-h.toml` | lookahead_rounds=8, weight=0.5 |
+| J | completed | `x1ctjo6uvbqmdbpomn76zxfw` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.1` | `configs/lab/prime-td-run-j.toml` | lookahead_rounds=2, weight=0.5 + rollout_steps=4 |
 | K | running | `eqjqeuhswcenpnt3vdvythig` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.2` | `configs/lab/prime-td-auto-advance-80-k.toml` | auto-advance + prep budget (2 → scale 0.1, max 6) |
 | L | running | `ogxpb2r9sylec7sl9c9a9xu2` | `Qwen/Qwen3-4B-Instruct-2507` | `kbediako/prime-td-env` | `0.2.2` | `configs/lab/prime-td-auto-advance-80-l.toml` | auto-advance + higher prep budget (3 → scale 0.15, max 8) |
 

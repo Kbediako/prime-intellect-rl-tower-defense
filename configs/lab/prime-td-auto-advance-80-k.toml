@@ -1,0 +1,49 @@
+# Prime RL hosted training (auto-advance, short run)
+name = "prime-td-auto-advance-80-k"
+model = "Qwen/Qwen3-4B-Instruct-2507"
+max_steps = 80
+batch_size = 256
+rollouts_per_example = 8
+
+# Optional .env files (loaded relative to this config file).
+# Use these for secrets and pass variable names via env args.
+env_file = ["secrets.env"]
+
+[sampling]
+max_tokens = 64
+temperature = 0.2
+
+[[env]]
+id = "kbediako/prime-td-env"
+
+[env.args.config.difficulty]
+max_rounds = 50
+
+[env.args.config.episode]
+max_steps = 200
+
+[env.args.config.rewards]
+step_penalty = 0.1
+invalid_action_penalty = 1.0
+life_loss_penalty = 10.0
+pop_reward_multiplier = 1.0
+
+[env.args.config.reward_weights]
+format = 0.5
+env = 1.0
+
+[env.args.config.observation]
+max_action_candidates = 200
+max_build_slots = 120
+max_towers = 50
+max_threats = 5
+
+[env.args.config.dataset]
+rollout_steps = 2
+policy = "random"
+
+[env.args.config.rules]
+auto_advance_round = true
+prep_actions_per_round = 2
+prep_actions_round_scale = 0.1
+prep_actions_max = 6

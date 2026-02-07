@@ -550,3 +550,29 @@ class RewardShapingChooseTest(unittest.TestCase):
         expected_total_cost = int(dart_cfg["cost"]) + sum(int(tier["cost"]) for tier in dart_cfg["upgrade_paths"]["a"])
         expected_refund = int(expected_total_cost * float(config["economy"]["sell_refund_ratio"]))
         self.assertEqual(simulator.state.cash, cash_before + expected_refund)
+
+    def test_observation_exposes_round_phase_bucket(self) -> None:
+        config = env.deep_merge(
+            env.DEFAULT_CONFIG,
+            {
+                "observation": {
+                    "candidate_balance": {
+                        "early_max_round": 5,
+                        "mid_max_round": 8,
+                    }
+                }
+            },
+        )
+
+        simulator = env.TowerDefenseEnv(config)
+        obs = simulator.reset(seed=19)
+        self.assertEqual(obs.get("phase"), "build")
+        self.assertEqual(obs.get("round_phase"), "early")
+
+        simulator.state.round = 6
+        obs_mid = simulator._observation(cache_action_candidates=False)
+        self.assertEqual(obs_mid.get("round_phase"), "mid")
+
+        simulator.state.round = 9
+        obs_late = simulator._observation(cache_action_candidates=False)
+        self.assertEqual(obs_late.get("round_phase"), "late")

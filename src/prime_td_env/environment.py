@@ -801,6 +801,8 @@ class TowerDefenseEnv:
         if self.state is None:
             raise RuntimeError("state unavailable")
         obs_config = self.config.get("observation", {})
+        balance_cfg = obs_config.get("candidate_balance") if isinstance(obs_config.get("candidate_balance"), dict) else {}
+        round_phase = self._round_phase(self.state.round, balance_cfg)
         max_build_slots = obs_config.get("max_build_slots")
         max_towers = obs_config.get("max_towers")
         max_path_points = obs_config.get("max_path_points")
@@ -837,6 +839,7 @@ class TowerDefenseEnv:
         return {
             "round": self.state.round,
             "phase": self.state.phase,
+            "round_phase": round_phase,
             "steps": self.state.steps,
             "lives": self.state.lives,
             "cash": self.state.cash,

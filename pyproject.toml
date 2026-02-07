@@ -1,6 +1,6 @@
 [project]
 name = "prime-td-env"
-version = "0.2.21"
+version = "0.2.22"
 description = "Text-first tower-defense environment for Prime Intellect hosted RFT."
 tags = ["rl", "tower-defense", "verifiers", "prime-intellect", "game", "procedural"]
 requires-python = ">=3.11"

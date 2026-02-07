@@ -1,0 +1,83 @@
+# Prime RL hosted training (macro-round, X26d behavioral baseline + X29b payload controls)
+# X32: aggressive build bias to recover plan quality under payload caps.
+name = "prime-td-macro-round-60-x32"
+model = "Qwen/Qwen3-4B-Instruct-2507"
+max_steps = 60
+batch_size = 4
+rollouts_per_example = 1
+trajectory_strategy = "branching"
+
+env_file = ["secrets.env"]
+
+[sampling]
+max_tokens = 40
+temperature = 0.6
+
+[[env]]
+id = "kbediako/prime-td-env"
+
+[env.args.config]
+wrapper = "macro_round"
+
+[env.args.config.difficulty]
+max_rounds = 18
+
+[env.args.config.episode]
+max_steps = 400
+
+[env.args.config.rewards]
+step_penalty = 0.1
+invalid_action_penalty = 1.0
+life_loss_penalty = 10.0
+pop_reward_multiplier = 1.0
+macro_round_invariant_penalty = 50.0
+
+[env.args.config.reward_weights]
+format = 0.5
+env = 1.0
+
+[env.args.config.observation]
+max_action_candidates = 5
+max_build_slots = 2
+max_towers = 8
+max_threats = 1
+
+[env.args.config.observation.candidate_balance]
+# tighter overall caps to offset smaller candidate pool
+early_max_round = 11
+mid_max_round = 13
+min_build_frac = 0.5
+max_upgrade_candidates = 4
+
+[env.args.config.observation.candidate_balance.by_phase.early]
+min_build_frac = 0.7
+max_upgrade_candidates = 2
+
+[env.args.config.observation.candidate_balance.by_phase.mid]
+min_build_frac = 0.6
+max_upgrade_candidates = 3
+
+[env.args.config.observation.candidate_balance.by_phase.late]
+min_build_frac = 0.5
+max_upgrade_candidates = 3
+
+[env.args.config.dataset]
+num_seeds = 128
+rollout_steps = 120
+policy = "safe_explore"
+safe_explore_build_until_round = 8
+safe_explore_build_until_towers = 5
+
+[env.args.config.dataset.snapshots]
+mode = "rounds"
+rounds = [10, 14]
+prep_remaining = 2
+
+[env.args.config.rules]
+auto_advance_round = true
+prep_actions_per_round = 2
+prep_actions_round_scale = 0.0
+prep_actions_max = 6
+start_round_max_prep_remaining = 1
+require_tower_before_start = true
+mask_sell = true

@@ -1,0 +1,20 @@
+__pycache__/
+*.pyc
+*.egg-info/
+.venv/
+.env
+configs/lab/secrets.env
+.DS_Store
+out/
+outputs/
+uv.lock
+logs/
+dist/
+build/
+# Keep docs local by default; only track core research docs.
+docs/*
+!docs/RESULTS.md
+!docs/PI_Config_References.md
+artifacts/
+Agent_Scartch_Pad.md
+PLAN_FEEDBACK_6_UV.md

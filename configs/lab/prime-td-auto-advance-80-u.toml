@@ -1,0 +1,61 @@
+# Prime RL hosted training (auto-advance, diverse snapshots)
+name = "prime-td-auto-advance-80-u"
+model = "Qwen/Qwen3-4B-Instruct-2507"
+max_steps = 80
+batch_size = 64
+rollouts_per_example = 16
+
+# Optional .env files (loaded relative to this config file).
+# Use these for secrets and pass variable names via env args.
+env_file = ["secrets.env"]
+
+[sampling]
+max_tokens = 64
+temperature = 0.7
+
+[[env]]
+id = "kbediako/prime-td-env"
+
+[env.args.config.difficulty]
+max_rounds = 30
+
+[env.args.config.episode]
+max_steps = 200
+
+[env.args.config.rewards]
+step_penalty = 0.1
+invalid_action_penalty = 1.0
+life_loss_penalty = 10.0
+pop_reward_multiplier = 1.0
+
+[env.args.config.reward_weights]
+format = 0.5
+env = 1.0
+
+[env.args.config.observation]
+max_action_candidates = 100
+max_build_slots = 6
+max_towers = 50
+max_threats = 5
+
+[env.args.config.dataset]
+num_seeds = 128
+rollout_steps = 120
+policy = "safe_explore"
+snapshots_per_seed = 5
+safe_explore_upgrade_prob = 0.5
+
+[env.args.config.dataset.snapshots]
+mode = "rounds"
+rounds = [3, 6, 10, 15, 20]
+prep_remaining = 1
+
+[env.args.config.dataset.diagnostics]
+dominance = true
+
+[env.args.config.rules]
+auto_advance_round = true
+prep_actions_per_round = 2
+prep_actions_round_scale = 0.0
+prep_actions_max = 6
+start_round_max_prep_remaining = 1

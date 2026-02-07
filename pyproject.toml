@@ -1,0 +1,30 @@
+[project]
+name = "prime-td-env"
+version = "0.2.21"
+description = "Text-first tower-defense environment for Prime Intellect hosted RFT."
+tags = ["rl", "tower-defense", "verifiers", "prime-intellect", "game", "procedural"]
+requires-python = ">=3.11"
+readme = "README.md"
+license = {text = "MIT"}
+authors = [
+  {name = "Project Owner"}
+]
+dependencies = [
+  "numpy>=1.26",
+  "verifiers>=0.1.9.post3",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = ["src/prime_td_env/**", "pyproject.toml", "README.md", "LICENSE", "env.py"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/prime_td_env"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

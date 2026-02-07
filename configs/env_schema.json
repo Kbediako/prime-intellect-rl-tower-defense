@@ -1,0 +1,263 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Prime Intellect Tower Defense Environment Config",
+  "type": "object",
+  "properties": {
+    "map": {
+      "type": "object",
+      "properties": {
+        "width": {"type": "integer", "minimum": 5},
+        "height": {"type": "integer", "minimum": 5},
+        "seed": {"type": "integer"},
+        "path": {
+          "anyOf": [
+            {
+              "type": "array",
+              "minItems": 2,
+              "items": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            {"type": "null"}
+          ]
+        },
+        "path_turn_chance": {"type": "number", "minimum": 0, "maximum": 1},
+        "build_slots": {
+          "anyOf": [
+            {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {"type": "integer"},
+                "minItems": 2,
+                "maxItems": 2
+              }
+            },
+            {"type": "null"}
+          ]
+        }
+      },
+      "required": ["width", "height"]
+    },
+    "economy": {
+      "type": "object",
+      "properties": {
+        "starting_cash": {"type": "integer", "minimum": 0},
+        "starting_lives": {"type": "integer", "minimum": 1},
+        "sell_refund_ratio": {"type": "number", "minimum": 0, "maximum": 1},
+        "end_round_income": {"type": "integer", "minimum": 0}
+      },
+      "required": ["starting_cash", "starting_lives"]
+    },
+    "episode": {
+      "type": "object",
+      "properties": {
+        "max_steps": {
+          "anyOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "difficulty": {
+      "type": "object",
+      "properties": {
+        "max_rounds": {
+          "anyOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "health_scale_per_round": {"type": "number", "minimum": 0},
+        "speed_scale_per_round": {"type": "number", "minimum": 0}
+      }
+    },
+    "simulation": {
+      "type": "object",
+      "properties": {
+        "max_ticks_per_round": {"type": "integer", "minimum": 1},
+        "spawn_interval_ticks": {"type": "integer", "minimum": 1}
+      }
+    },
+    "rewards": {
+      "type": "object",
+      "properties": {
+        "pop_reward_multiplier": {"type": "number", "minimum": 0},
+        "life_loss_penalty": {"type": "number", "minimum": 0},
+        "invalid_action_penalty": {"type": "number", "minimum": 0},
+        "step_penalty": {"type": "number", "minimum": 0}
+      }
+    },
+    "reward_shaping": {
+      "type": "object",
+      "properties": {
+        "enable_lookahead": {"type": "boolean"},
+        "lookahead_rounds": {"type": "integer", "minimum": 0},
+        "lookahead_weight": {"type": "number", "minimum": 0}
+      }
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "require_tower_before_start": {"type": "boolean"},
+        "require_choose": {"type": "boolean"},
+        "auto_advance_round": {"type": "boolean"},
+        "mask_sell": {"type": "boolean"},
+        "prep_actions_per_round": {"type": "integer", "minimum": 1},
+        "prep_actions_round_scale": {"type": "number", "minimum": 0},
+        "prep_actions_max": {
+          "anyOf": [
+            {"type": "integer", "minimum": 1},
+            {"type": "null"}
+          ]
+        },
+        "start_round_max_prep_remaining": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "soft_tower_cap": {
+          "type": "object",
+          "properties": {
+            "per_type": {
+              "type": "object",
+              "properties": {
+                "threshold": {"type": "integer", "minimum": 0},
+                "multiplier": {"type": "number", "minimum": 0}
+              }
+            }
+          }
+        }
+      }
+    },
+    "reward_weights": {
+      "type": "object",
+      "properties": {
+        "format": {"type": "number", "minimum": 0},
+        "env": {"type": "number", "minimum": 0}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "properties": {
+        "max_action_candidates": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "max_build_slots": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "max_towers": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "max_threats": {
+          "anyOf": [
+            {"type": "integer", "minimum": 0},
+            {"type": "null"}
+          ]
+        },
+        "max_path_points": {
+          "anyOf": [
+            {"type": "integer", "minimum": 2},
+            {"type": "null"}
+          ]
+        },
+        "candidate_balance": {
+          "type": "object",
+          "properties": {
+            "early_max_round": {"type": "integer", "minimum": 1},
+            "mid_max_round": {"type": "integer", "minimum": 1},
+            "min_build_frac": {"type": "number", "minimum": 0, "maximum": 1},
+            "max_upgrade_candidates": {"type": "integer", "minimum": 0},
+            "by_phase": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "properties": {
+                  "min_build_frac": {"type": "number", "minimum": 0, "maximum": 1},
+                  "max_upgrade_candidates": {"type": "integer", "minimum": 0}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "properties": {
+        "rollout_steps": {"type": "integer", "minimum": 0},
+        "policy": {"type": "string"},
+        "safe_explore_upgrade_prob": {"type": "number", "minimum": 0, "maximum": 1},
+        "safe_explore_build_until_round": {"type": "integer", "minimum": 0},
+        "safe_explore_build_until_towers": {"type": "integer", "minimum": 0}
+      }
+    },
+    "towers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "cost": {"type": "integer", "minimum": 0},
+          "range": {"type": "number", "minimum": 0.1},
+          "damage": {"type": "number", "minimum": 0},
+          "pierce": {"type": "integer", "minimum": 1},
+          "fire_rate": {"type": "number", "minimum": 0.1},
+          "upgrade_paths": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "cost": {"type": "integer", "minimum": 0},
+                  "damage_add": {"type": "number"},
+                  "range_add": {"type": "number"},
+                  "pierce_add": {"type": "integer"},
+                  "fire_rate_add": {"type": "number"}
+                },
+                "required": ["cost"]
+              }
+            }
+          }
+        },
+        "required": ["cost", "range", "damage", "pierce", "fire_rate"]
+      }
+    },
+    "bloons": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "hp": {"type": "number", "minimum": 0.1},
+          "speed": {"type": "number", "minimum": 0.1},
+          "reward": {"type": "integer", "minimum": 0},
+          "tier": {"type": "integer", "minimum": 0},
+          "children": {
+            "type": "array",
+            "items": {"type": "string"}
+          },
+          "traits": {
+            "type": "array",
+            "items": {"type": "string"}
+          }
+        },
+        "required": ["hp", "speed", "reward", "tier"]
+      }
+    }
+  },
+  "required": ["map", "economy"]
+}

@@ -69,12 +69,3 @@ prime rl run configs/lab/prime-td.toml
 - If sample upload 500s appear, reduce tokens/observation caps or horizon pressure.
 
 Detailed longitudinal results and run-by-run analysis: `docs/RESULTS.md`.
-
-### Changelog
-
-#### v0.2.20 (Feb 7, 2026)
-- Re-published a clean Hub package containing only runtime environment files.
-- Removed non-runtime documents/assets from the published environment artifact.
-
-#### v0.2.19
-- Stabilized macro-round progression invariants and continuing horizon experiments.

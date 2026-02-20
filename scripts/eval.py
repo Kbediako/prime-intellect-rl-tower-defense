@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 
-from prime_td_env.environment import load_environment
+from prime_td_env.environment import TowerDefenseEnv
 
 ACTION_TYPES = ["build", "upgrade", "sell", "start_round", "noop"]
 UPGRADE_PATHS = ["a", "b", "c"]
@@ -229,7 +229,7 @@ def main() -> None:
         "observation": {"max_action_candidates": args.max_action_candidates},
         "episode": {"max_steps": args.max_steps},
     }
-    env = load_environment(config)
+    env = TowerDefenseEnv(config)
     rng = np.random.default_rng(42)
 
     agents = ["random", "heuristic"]

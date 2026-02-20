@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple
 
-from prime_td_env.environment import load_environment
+from prime_td_env.environment import TowerDefenseEnv
 
 
 def run_with_actions(actions: List[Dict[str, Any]], seed: int) -> List[Tuple[Dict[str, Any], float, bool, Dict[str, Any]]]:
-    env = load_environment({})
+    env = TowerDefenseEnv({})
     env.reset(seed=seed)
     trajectory = []
     for action in actions:
@@ -20,7 +20,7 @@ def run_with_actions(actions: List[Dict[str, Any]], seed: int) -> List[Tuple[Dic
 
 
 def assert_determinism() -> None:
-    env = load_environment({})
+    env = TowerDefenseEnv({})
     obs = env.reset(seed=123)
     build_slot = obs["map"]["build_slots"][0]
     actions = [
@@ -35,7 +35,7 @@ def assert_determinism() -> None:
 
 
 def assert_invalid_actions() -> None:
-    env = load_environment({})
+    env = TowerDefenseEnv({})
     obs = env.reset(seed=456)
     path_x, path_y = obs["map"]["path"][0]
     valid_actions = obs["valid_actions"]
@@ -66,7 +66,7 @@ def assert_invalid_actions() -> None:
 
 
 def assert_round_cap() -> None:
-    env = load_environment({"difficulty": {"max_rounds": 1}})
+    env = TowerDefenseEnv({"difficulty": {"max_rounds": 1}})
     env.reset(seed=321)
     obs, reward, done, info = env.step({"type": "start_round"})
     assert done is True

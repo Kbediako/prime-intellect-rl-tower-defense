@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
-from prime_td_env.environment import load_environment
+from prime_td_env.environment import TowerDefenseEnv
 
 
 def select_action(obs: Dict[str, Any]) -> Dict[str, Any]:
@@ -67,7 +67,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config: Dict[str, Any] = {"difficulty": {"max_rounds": args.max_rounds}}
-    env = load_environment(config)
+    env = TowerDefenseEnv(config)
 
     results: List[Dict[str, Any]] = []
     for i in range(args.episodes):

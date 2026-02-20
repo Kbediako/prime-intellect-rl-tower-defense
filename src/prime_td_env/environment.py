@@ -836,7 +836,7 @@ class TowerDefenseEnv:
         if cache_action_candidates:
             self._cached_action_candidates = action_candidates
 
-        return {
+        obs = {
             "round": self.state.round,
             "phase": self.state.phase,
             "round_phase": round_phase,
@@ -873,6 +873,8 @@ class TowerDefenseEnv:
                 "valid_actions": action_meta["omitted"],
             },
         }
+        _update_action_candidate_index_helpers(obs)
+        return obs
 
     def _tower_summary(self, tower: Tower) -> Dict[str, Any]:
         return {
@@ -1262,10 +1264,61 @@ CHOOSE_SYSTEM_PROMPT = (
 MACRO_SYSTEM_PROMPT = (
     "You are playing a tower-defense game. Respond with ONLY a single JSON plan "
     "object and no extra text. The plan contains 0-2 prep actions, each selecting "
-    "a candidate by index (valid indices: 0..action_candidates_count-1). Example: "
+    "a candidate by index. Use ONLY action_candidates_max_index to bound choose "
+    "indices: valid range is 0..action_candidates_max_index. Never use "
+    "action_candidates_count as an index or for index math. If "
+    "action_candidates_max_index < 0, output an empty actions list. "
+    "For noop, always set index to special_candidate_indices.noop exactly (copy "
+    "the value; no math). If unsure, choose special_candidate_indices.noop. "
+    "Never output index == action_candidates_count. Example: "
     "{\"type\": \"plan\", \"actions\": [{\"type\": \"choose\", \"index\": 0}, "
     "{\"type\": \"choose\", \"index\": 1}]}"
 )
+
+
+def _update_action_candidate_index_helpers(obs: Dict[str, Any]) -> None:
+    """Add index helpers so models can stay in-bounds without arithmetic."""
+
+    if not isinstance(obs, dict):
+        return
+
+    candidates = obs.get("action_candidates")
+    if not isinstance(candidates, list):
+        candidates = []
+        obs["action_candidates"] = candidates
+
+    obs["action_candidates_count"] = len(candidates)
+    obs["action_candidates_max_index"] = len(candidates) - 1
+
+    noop_index = None
+    start_round_index = None
+    for i, cand in enumerate(candidates):
+        if not isinstance(cand, dict):
+            continue
+        cand_type = cand.get("type")
+        if cand_type == "noop":
+            noop_index = i
+        elif cand_type == "start_round":
+            start_round_index = i
+
+    special = obs.get("special_candidate_indices")
+    if not isinstance(special, dict):
+        special = {}
+
+    if noop_index is not None:
+        special["noop"] = noop_index
+    else:
+        special.pop("noop", None)
+
+    if start_round_index is not None:
+        special["start_round"] = start_round_index
+    else:
+        special.pop("start_round", None)
+
+    if special:
+        obs["special_candidate_indices"] = special
+    else:
+        obs.pop("special_candidate_indices", None)
 
 
 def _filter_macro_round_candidates(obs: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -1280,7 +1333,7 @@ def _filter_macro_round_candidates(obs: Dict[str, Any]) -> List[Dict[str, Any]]:
         if not (isinstance(cand, dict) and cand.get("type") == "start_round")
     ]
     obs["action_candidates"] = filtered
-    obs["action_candidates_count"] = len(filtered)
+    _update_action_candidate_index_helpers(obs)
     valid_actions = obs.get("valid_actions")
     if isinstance(valid_actions, dict):
         valid_actions["start_round"] = False
@@ -2039,6 +2092,7 @@ class TowerDefenseMacroRoundEnv(vf.MultiTurnEnv):
         invalid_action = False
         invalid_reason = ""
         external_invalid = False
+        choose_off_by_one_clamped = 0
         if actions is None:
             actions = []
             format_reward = -1.0
@@ -2065,8 +2119,29 @@ class TowerDefenseMacroRoundEnv(vf.MultiTurnEnv):
         planning = TowerDefenseEnv(simulator.config)
         planning.load_from_observation(obs_for_plan)
 
+        obs_count = _coerce_int(obs_for_plan.get("action_candidates_count"))
+        obs_max_index = _coerce_int(obs_for_plan.get("action_candidates_max_index"))
+        special = obs_for_plan.get("special_candidate_indices")
+        noop_index = _coerce_int(special.get("noop")) if isinstance(special, dict) else None
+
         for action in actions_to_run:
             index = _coerce_int(action.get("index"))
+            # Robust decode for the known failure mode: using `action_candidates_count` as
+            # an index to refer to the last candidate (usually noop).
+            if (
+                index is not None
+                and obs_count is not None
+                and obs_count > 0
+                and index == obs_count
+                and len(candidates) == obs_count
+            ):
+                choose_off_by_one_clamped += 1
+                if noop_index is not None and 0 <= noop_index < len(candidates):
+                    index = noop_index
+                elif obs_max_index is not None and 0 <= obs_max_index < len(candidates):
+                    index = obs_max_index
+                else:
+                    index = len(candidates) - 1
             if index is None or index < 0 or index >= len(candidates):
                 invalid_action = True
                 external_invalid = True
@@ -2172,6 +2247,7 @@ class TowerDefenseMacroRoundEnv(vf.MultiTurnEnv):
             "sim_steps": sim_steps,
             "prep_before": prep_before,
             "prep_after": prep_after,
+            "choose_off_by_one_clamped": choose_off_by_one_clamped,
         }
 
         if not done and round_delta != 1:

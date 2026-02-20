@@ -92,6 +92,154 @@ def _lookahead_delta(config: dict, obs: dict, rounds: int) -> float:
 
 
 class RewardShapingChooseTest(unittest.TestCase):
+    def test_macro_prompt_uses_only_max_index_guidance(self) -> None:
+        prompt = env.MACRO_SYSTEM_PROMPT
+        self.assertIn("action_candidates_max_index", prompt)
+        self.assertIn("Use ONLY action_candidates_max_index", prompt)
+        self.assertIn("Never use action_candidates_count as an index or for index math", prompt)
+        self.assertNotIn("equivalently", prompt)
+        self.assertNotIn("action_candidates_count-1", prompt)
+        self.assertIn("special_candidate_indices.noop", prompt)
+
+    def test_macro_round_clamps_off_by_one_to_noop(self) -> None:
+        # Construct a minimal macro-round state and force the known failure mode:
+        # index == action_candidates_count (off-by-one for noop).
+        config = env.deep_merge(
+            env.DEFAULT_CONFIG,
+            {
+                "difficulty": {"max_rounds": 3},
+                "rules": {
+                    "auto_advance_round": True,
+                    "prep_actions_per_round": 2,
+                    "require_tower_before_start": False,
+                },
+            },
+        )
+        macro = env.TowerDefenseMacroRoundEnv(config, num_examples=1, seed_start=0)
+        state = {"info": {"seed": 0}}
+        asyncio.run(macro.setup_state(state))
+
+        simulator = state["simulator"]
+        obs_for_plan = simulator._observation()
+        candidates = env._filter_macro_round_candidates(obs_for_plan)
+        count = obs_for_plan.get("action_candidates_count")
+        self.assertIsInstance(count, int)
+        self.assertGreater(count, 0)
+        self.assertEqual(count, len(candidates))
+
+        special = obs_for_plan.get("special_candidate_indices", {})
+        noop_index = special.get("noop")
+        self.assertIsInstance(noop_index, int)
+        self.assertEqual(noop_index, count - 1)
+
+        plan = {
+            "type": "plan",
+            "actions": [
+                {"type": "choose", "index": noop_index},
+                {"type": "choose", "index": count},  # off-by-one -> should be clamped
+            ],
+        }
+        messages = [{"role": "assistant", "content": json.dumps(plan)}]
+        resp = asyncio.run(macro.env_response(messages, state))
+
+        self.assertIsInstance(resp, list)
+        self.assertFalse(state.get("invalid_actions"), "clamped off-by-one should not be treated as invalid")
+        meta = state.get("macro_round_last_meta", {})
+        self.assertEqual(meta.get("choose_off_by_one_clamped"), 1)
+
+        step = {}
+        macro.add_trajectory_step(state, step)
+        self.assertEqual(step.get("extras", {}).get("macro_round", {}).get("choose_off_by_one_clamped"), 1)
+
+    def test_macro_round_does_not_clamp_other_out_of_range(self) -> None:
+        config = env.deep_merge(
+            env.DEFAULT_CONFIG,
+            {
+                "difficulty": {"max_rounds": 3},
+                "rules": {
+                    "auto_advance_round": True,
+                    "prep_actions_per_round": 2,
+                    "require_tower_before_start": False,
+                },
+            },
+        )
+        macro = env.TowerDefenseMacroRoundEnv(config, num_examples=1, seed_start=0)
+        state = {"info": {"seed": 1}}
+        asyncio.run(macro.setup_state(state))
+
+        simulator = state["simulator"]
+        obs_for_plan = simulator._observation()
+        candidates = env._filter_macro_round_candidates(obs_for_plan)
+        count = obs_for_plan.get("action_candidates_count")
+        self.assertIsInstance(count, int)
+        self.assertEqual(count, len(candidates))
+
+        plan = {"type": "plan", "actions": [{"type": "choose", "index": count + 1}]}
+        messages = [{"role": "assistant", "content": json.dumps(plan)}]
+        _resp = asyncio.run(macro.env_response(messages, state))
+
+        invalids = state.get("invalid_actions", [])
+        self.assertTrue(invalids, "true out-of-range should remain invalid")
+        self.assertIn("choose_out_of_range", invalids)
+        meta = state.get("macro_round_last_meta", {})
+        self.assertEqual(meta.get("choose_off_by_one_clamped"), 0)
+
+    def test_observation_exposes_action_candidate_index_helpers(self) -> None:
+        config = env.deep_merge(
+            env.DEFAULT_CONFIG,
+            {
+                "rules": {
+                    "auto_advance_round": False,
+                    "require_tower_before_start": False,
+                },
+            },
+        )
+
+        simulator = env.TowerDefenseEnv(config)
+        obs = simulator.reset(seed=101)
+
+        candidates = obs.get("action_candidates", [])
+        self.assertIsInstance(candidates, list)
+        self.assertEqual(obs.get("action_candidates_count"), len(candidates))
+        self.assertEqual(obs.get("action_candidates_max_index"), len(candidates) - 1)
+
+        special = obs.get("special_candidate_indices", {})
+        self.assertIsInstance(special, dict)
+
+        noop_index = special.get("noop")
+        self.assertIsInstance(noop_index, int)
+        self.assertGreaterEqual(noop_index, 0)
+        self.assertLess(noop_index, len(candidates))
+        self.assertEqual(candidates[noop_index].get("type"), "noop")
+
+        start_round_index = special.get("start_round")
+        self.assertIsInstance(start_round_index, int)
+        self.assertGreaterEqual(start_round_index, 0)
+        self.assertLess(start_round_index, len(candidates))
+        self.assertEqual(candidates[start_round_index].get("type"), "start_round")
+
+    def test_macro_round_filter_recomputes_index_helpers(self) -> None:
+        simulator = env.TowerDefenseEnv(env.DEFAULT_CONFIG)
+        obs = simulator.reset(seed=102)
+
+        raw_candidates = obs.get("action_candidates", [])
+        self.assertTrue(any(c.get("type") == "start_round" for c in raw_candidates if isinstance(c, dict)))
+        self.assertTrue(any(c.get("type") == "noop" for c in raw_candidates if isinstance(c, dict)))
+
+        env._filter_macro_round_candidates(obs)
+
+        candidates = obs.get("action_candidates", [])
+        self.assertFalse(any(c.get("type") == "start_round" for c in candidates if isinstance(c, dict)))
+        self.assertEqual(obs.get("action_candidates_count"), len(candidates))
+        self.assertEqual(obs.get("action_candidates_max_index"), len(candidates) - 1)
+
+        special = obs.get("special_candidate_indices", {})
+        self.assertIsInstance(special, dict)
+        self.assertNotIn("start_round", special)
+        noop_index = special.get("noop")
+        self.assertIsInstance(noop_index, int)
+        self.assertEqual(candidates[noop_index].get("type"), "noop")
+
     def test_choose_start_round_matches_direct_reward(self) -> None:
         config = env.deep_merge(
             env.DEFAULT_CONFIG,
@@ -519,6 +667,68 @@ class RewardShapingChooseTest(unittest.TestCase):
         self.assertEqual(end_round - start_round, 1)
         self.assertIn("plan_exceeds_budget", state.get("invalid_actions", []))
         self.assertFalse(state.get("episode_done"))
+
+    def test_macro_round_outgoing_observation_helpers_are_consistent(self) -> None:
+        config = env.deep_merge(
+            env.DEFAULT_CONFIG,
+            {
+                "wrapper": "macro_round",
+                "economy": {
+                    "starting_cash": 1000,
+                    "starting_lives": 100,
+                    "end_round_income": 100,
+                },
+                "rules": {
+                    "auto_advance_round": True,
+                    "prep_actions_per_round": 2,
+                    "prep_actions_round_scale": 0.0,
+                    "prep_actions_max": 2,
+                    "start_round_max_prep_remaining": 1,
+                    "require_tower_before_start": True,
+                    "mask_sell": True,
+                },
+                "observation": {
+                    "max_build_slots": 3,
+                    "max_action_candidates": 10,
+                },
+                "dataset": {
+                    "policy": "random",
+                    "rollout_steps": 0,
+                    "num_seeds": 1,
+                },
+            },
+        )
+
+        macro_env = env.TowerDefenseMacroRoundEnv(config, num_examples=1, seed_start=0)
+        state = {"info": {"seed": 5}}
+        asyncio.run(macro_env.setup_state(state))
+
+        # Run a trivial plan to advance one macro-round.
+        plan = {"type": "plan", "actions": []}
+        messages = [{"role": "assistant", "content": json.dumps(plan)}]
+        response = asyncio.run(macro_env.env_response(messages, state))
+        self.assertTrue(response)
+
+        content = response[-1]["content"]
+        prefix = "Observation: "
+        self.assertTrue(content.startswith(prefix))
+        payload = json.loads(content[len(prefix) :])
+
+        candidates = payload.get("action_candidates", [])
+        self.assertIsInstance(candidates, list)
+        self.assertEqual(payload.get("action_candidates_count"), len(candidates))
+        self.assertEqual(payload.get("action_candidates_max_index"), len(candidates) - 1)
+
+        # Macro-round filter should remove start_round; noop should remain and be indexable.
+        self.assertFalse(any(c.get("type") == "start_round" for c in candidates if isinstance(c, dict)))
+        special = payload.get("special_candidate_indices", {})
+        self.assertIsInstance(special, dict)
+        self.assertNotIn("start_round", special)
+        noop_index = special.get("noop")
+        self.assertIsInstance(noop_index, int)
+        self.assertGreaterEqual(noop_index, 0)
+        self.assertLess(noop_index, len(candidates))
+        self.assertEqual(candidates[noop_index].get("type"), "noop")
 
     def test_load_from_observation_clamps_upgrade_tiers(self) -> None:
         config = env.deep_merge(env.DEFAULT_CONFIG, {})

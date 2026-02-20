@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Tuple
 
 import numpy as np
 
-from prime_td_env.environment import load_environment
+from prime_td_env.environment import TowerDefenseEnv
 
 ACTION_TYPES = ["build", "upgrade", "sell", "start_round", "noop"]
 UPGRADE_PATHS = ["a", "b", "c"]
@@ -156,7 +156,7 @@ def main() -> None:
     else:
         config["difficulty"]["max_rounds"] = args.max_rounds
 
-    env = load_environment(config)
+    env = TowerDefenseEnv(config)
     rng = np.random.default_rng(args.seed)
 
     weights = np.zeros(6 + len(ACTION_TYPES) + 2 + len(sorted(env.tower_types.keys())) + len(UPGRADE_PATHS) + 1, dtype=np.float32)

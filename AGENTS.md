@@ -11,6 +11,12 @@ This guide covers best practices for building environments with `verifiers` and 
 - For macro-round runs, validate `macro_round_meta.delta_round == 1` for **each** user observation after turn 1; the initial prompt may omit `macro_round_meta`.
 - Treat the interleaved-rollouts warning as informational until round-delta checks prove a state issue.
 - If rollouts return 0 samples or logs show 500 errors, reduce `sampling.max_tokens` and observation caps, or lower `max_rounds` / snapshot rounds.
+- Run behavior lane and horizon lane concurrently by default when both run diffs are independent and one-variable per lane.
+- Use explicit reliability verdicts:
+  - `diagnostic`: coverage >= 95% for all sampled steps, no upload 500s, full-turn parsing complete, and non-cap `delta_round == 1` checks pass.
+  - `diagnostic_with_caution`: exactly one sampled step at 90-95% coverage, no 500s, and delta checks pass (trend-only; no hard pass/fail claims).
+  - `non_diagnostic`: any sampled step < 90% coverage, any 500 with incomplete coverage, or any delta-round failure.
+- Given recent PI-side reliability recovery, payload expansion is allowed only as one-variable canaries; require two consecutive reliable runs before further expansion, and roll back immediately if 500s or coverage regress.
 - After code changes, run targeted tests (at minimum: `PYTHONPATH=src python3 -m unittest tests/test_reward_shaping_choose.py`) and record the result in your notes.
 
 The Verifiers library is our library for creating environments to train and evaluate LLMs.

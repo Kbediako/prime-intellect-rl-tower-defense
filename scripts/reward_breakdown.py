@@ -6,7 +6,7 @@ import argparse
 import json
 from typing import Any, Dict
 
-from prime_td_env.environment import load_environment
+from prime_td_env.environment import TowerDefenseEnv
 
 
 def select_random(obs: Dict[str, Any], rng_seed: int) -> Dict[str, Any]:
@@ -58,7 +58,7 @@ def main() -> None:
     args = parser.parse_args()
 
     config: Dict[str, Any] = {"difficulty": {"max_rounds": args.max_rounds}}
-    env = load_environment(config)
+    env = TowerDefenseEnv(config)
     result = run_episode(env, args.seed, args.max_steps)
     print(json.dumps(result, indent=2))
 

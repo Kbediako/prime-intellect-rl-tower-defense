@@ -683,3 +683,15 @@ Run name in W&B
 -   Environment IDs must be in `owner/name` format
 
 ## **Commands Reference**
+
+## Prime TD Observation Fields (`kbediako/tower_defence`)
+
+The tower-defense env emits `Observation: <json>` messages containing an `action_candidates` list that the model selects from.
+
+Indexing helpers (added in env `>=0.2.24`; current hub version is `0.2.30`):
+
+- `action_candidates_count` (int): always equals `len(action_candidates)`.
+- `action_candidates_max_index` (int): equals `action_candidates_count - 1` (or `-1` if empty).
+- `special_candidate_indices` (object): named indices into `action_candidates`.
+  - `noop` (int): index of the noop candidate (expected to be the last element).
+  - `start_round` (int, optional): index of the start-round candidate when present. Note: macro-round wrapper filters `start_round` from candidates, so this key may be absent.

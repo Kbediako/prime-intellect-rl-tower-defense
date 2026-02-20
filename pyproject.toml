@@ -1,6 +1,6 @@
 [project]
-name = "prime-td-env"
-version = "0.2.22"
+name = "tower_defence"
+version = "0.2.30"
 description = "Text-first tower-defense environment for Prime Intellect hosted RFT."
 tags = ["rl", "tower-defense", "verifiers", "prime-intellect", "game", "procedural"]
 requires-python = ">=3.11"
@@ -14,15 +14,25 @@ dependencies = [
   "verifiers>=0.1.9.post3",
 ]
 
+[project.entry-points.pytest11]
+prime_td_env_pi_integration_workaround = "prime_td_env.pi_integration_pytest_plugin"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
-include = ["src/prime_td_env/**", "pyproject.toml", "README.md", "LICENSE", "env.py"]
+include = [
+  "src/prime_td_env/**",
+  "src/tower_defence/**",
+  "pyproject.toml",
+  "README.md",
+  "LICENSE",
+  "env.py",
+]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/prime_td_env"]
+packages = ["src/prime_td_env", "src/tower_defence"]
 
 [dependency-groups]
 dev = [

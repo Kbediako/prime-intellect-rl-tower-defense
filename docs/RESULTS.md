@@ -2538,3 +2538,162 @@ Notes:
 - **Restart/delete evidence:** `artifacts/x226_mainrun/restarts/stall_probe_x226t_2026-02-20T0000Z.log`, `artifacts/x226_mainrun/restarts/restart_x226t_stall_2026-02-20T001605Z.log`, `artifacts/x226_mainrun/restarts/delete_superseded_512_oxo75zj1idp1wu5wtckll8qc_2026-02-20T0019Z.log`.
 - **Launch artifact:** `artifacts/x226_mainrun/launch/launch_summary.json`.
 - **Progress update (UTC 2026-02-20T12:35:46Z):** run `ourjokrvb410zp5zknvyyz3j` is still `RUNNING`; `latest_step=38`; sampled/distribution checkpoints currently at `0/10/20/30`; `last_updated_at=2026-02-20T12:33:08.975228+00:00`.
+
+### X226u Completion Analysis (strict hygiene)
+
+- **Run ID:** `ourjokrvb410zp5zknvyyz3j`
+- **Config:** `configs/lab/prime-td-macro-round-60-x226u.toml`
+- **Terminal status:** `COMPLETED` (2026-02-20 19:12 UTC)
+- **Coverage pull method:** sampled steps `0/10/20/30/40/50`, `--limit 100`, all pages to exhaustion (`page_1` + terminal empty `page_2` each step).
+- **Coverage result:** `8` samples per sampled step (`1.5625%` each vs nominal `512`), total sampled rollouts parsed `48`.
+- **Full-turn parse volume:** `turns_total=1285`, `plan_turn_total=1285`, `invalid_plan=0`.
+- **Action/candidate/phase mix:** action mix `build=461`, `upgrade=961`, `noop=1147`; candidate pool `build=3218`, `upgrade=2448`, `noop=2570`; phase breakdown present in sampled turns is late-only.
+- **Choose/index metrics:** `choose_out_of_range=1` (`0.0778%`), `choose_off_by_one_clamped=2` (`0.1556%`), residual unclamped `0`.
+- **Delta accounting:** non-cap `pass/fail/missing = 1198/0/0`; cap `delta1/delta0/missing/other = 39/0/0/0`.
+- **Reliability notes:** upload 500 count `0`; interleaving warnings `0`; turn parsing complete.
+- **Spend-primary metrics:** `late_build_spend=92200.0`, `late_upgrade_spend=125960.0`, `late_upgrade_spend_lead_pct=36.6161%` (in-band), band distance `0.0pp`, secondary count lead `108.4599%`.
+- **Verdicts:** progression `FAIL` (`horizon_lower_bound >=35`), plan quality `PASS` (spend-primary), reliability `non_diagnostic`.
+- **Analysis artifacts:** `artifacts/x226_mainrun/x226u/analysis_summary.json`, `artifacts/x226_mainrun/analysis_fullrun_summary.json`, `artifacts/x226_mainrun/spend_backfill_x226_mainrun.json`.
+
+### Transfer (x226 main run)
+
+- **Commands (from `/Users/kbediako/Code/tower-defence`):**
+  - `npm run benchmark:transfer:baseline -- --pack core-v1 --seeds 1000:1049 --episodes 50 --max-steps 400`
+  - `npm run benchmark:transfer -- --pack core-v1 --seeds 1000:1049 --episodes 50 --max-steps 400 --baseline-canonical --out output/transfer/x226_mainrun.json --json`
+- **Transfer verdict:** `PASS` (`gate_status=pass`, `gate_reason="Transfer gate thresholds satisfied"`).
+- **Transfer artifacts:** `artifacts/x226_mainrun/transfer_x226_mainrun.json`, `artifacts/x226_mainrun/transfer_baseline_core_v1.json`, `artifacts/x226_mainrun/transfer_command.log`.
+
+### X226 Decisions
+
+- **FULL-RUN:** `NO-GO`
+- **DEPLOYMENT-READINESS:** `NO-GO`
+- **Exact blockers:** non-diagnostic reliability (coverage gate fail) and progression fail (`horizon_lower_bound >=35`).
+- **Decision artifact:** `artifacts/x226_mainrun/final_decision.md`.
+
+### X226u Dual-Gate Recompute + X227/X228 Launch (2026-02-21)
+
+- **Startup/drift snapshot:** `artifacts/x227_x228/startup_checks/2026-02-21_143508_x227_x228_session/`
+  - Commands captured: `prime --version`, `prime rl -h`, `prime rl run/get/progress/rollouts/logs -h`
+  - Drift result: **no CLI command-surface drift** vs latest x226 snapshot (format-only heading differences)
+  - Evidence: `cli_drift.md`, `prime_cli_surface.txt`
+
+- **Analyzer reliability patch (dual nominal/ceiling gate) applied:**
+  - Updated analyzers:
+    - `artifacts/x225_fullrun/analyze_full_run.py`
+    - `artifacts/x223_x224/analyze_pair.py`
+  - Per sampled step `s`:
+    - `nominal_s = batch_size * rollouts_per_example`
+    - `platform_ceiling_s = min(nominal_s, rollout_total_s)` (`rollout_response.total_s` fallback `total_s`/`total`)
+    - `effective_s = latest_created_at_cluster_count_s`
+    - `cov_nominal_s = min(effective_s, nominal_s) / nominal_s`
+    - `cov_ceiling_s = min(effective_s, platform_ceiling_s) / platform_ceiling_s`
+  - Reliability classes now enforced exactly as:
+    - `diagnostic`: all nominal >=95% + no 500 + full-turn parse + non-cap delta clean
+    - `diagnostic_with_caution`: nominal fails, ceiling >=95% at all sampled steps, platform ceiling stable, no 500, full-turn parse, non-cap delta clean
+    - `non_diagnostic`: otherwise
+  - Strict nominal gate retained; caution is not deploy-ready by default.
+
+- **x226u recompute (no relaunch):** run `ourjokrvb410zp5zknvyyz3j`
+  - Reliability moved from `non_diagnostic` -> `diagnostic_with_caution`
+  - Coverage (nominal): `1.5625%` each sampled step (`8/512`)
+  - Coverage (ceiling): `100%` each sampled step (`8/8`), stable ceiling `8` across `0/10/20/30/40/50`
+  - Non-cap delta: clean (`fail=0`, `missing=0`)
+  - Progression: `FAIL` (`horizon_lower_bound >=35`)
+  - Spend-primary: `PASS` (`late_upgrade_spend_lead_pct=36.6161%`)
+  - Transfer: `PASS`
+  - Decisions remain:
+    - **FULL-RUN: NO-GO** (progression blocker)
+    - **DEPLOYMENT: NO-GO** (progression blocker + no strict nominal diagnostic corroboration)
+  - Evidence: `artifacts/x226_mainrun/x226u/analysis_summary.json`, `artifacts/x226_mainrun/analysis_fullrun_summary.json`, `artifacts/x226_mainrun/final_decision.md`
+
+- **Next concurrent pair launched (post-valid gate):**
+  - `X227` control replicate: run `q13wnijl2szbx8x3em3wlkev`, config `configs/lab/prime-td-macro-round-60-x227.toml`
+  - `X228` one-variable treatment: run `gvaf99tz87ovnhssxw47mqt2`, config `configs/lab/prime-td-macro-round-60-x228.toml`
+    - single behavior delta: `[env.args.config.observation.candidate_balance.by_phase.late] min_build_frac 0.74 -> 0.75`
+  - Launch artifact: `artifacts/x227_x228/launch/launch_summary.json`
+  - Config diff artifact: `artifacts/x227_x228/config_diff.txt`
+  - Monitor log: `artifacts/x227_x228/monitor_status.log`
+- **X227/X228 stall intervention (2026-02-21 04:47-04:50 UTC):** both runs had sustained no-progress at step 0 for ~1h (`latest_step=null`, stale `last_updated_at`, logs capped at `Starting orchestrator step 0`). Controlled restart was executed for both and logged under `artifacts/x227_x228/restarts/`.
+  - `x227` (`q13wnijl2szbx8x3em3wlkev`): restart succeeded (`RUNNING -> PENDING -> RUNNING`, new `Started` timestamp `04:47 UTC`).
+  - `x228` (`gvaf99tz87ovnhssxw47mqt2`): restart transitioned to `FAILED` (`exit code 143`) and became non-restartable (`prime rl restart` only permits `RUNNING`).
+  - Recovery: replacement treatment run launched from same one-variable config as `x228r` (`ztit2i4j4j5gby4v0wa5c955`, `configs/lab/prime-td-macro-round-60-x228r.toml`, `late.min_build_frac=0.75`).
+  - Active pair mapping is now `x227` + `x228_active` and is recorded in `artifacts/x227_x228/launch/launch_summary.json`.
+
+### X227/X228r Completion (strict hygiene, dual-gate reliability)
+
+- **Active lane mapping:**
+  - `x227` control: run `q13wnijl2szbx8x3em3wlkev`, config `configs/lab/prime-td-macro-round-60-x227.toml`
+  - `x228` treatment (replacement `x228r`): run `ztit2i4j4j5gby4v0wa5c955`, config `configs/lab/prime-td-macro-round-60-x228r.toml`
+  - lineage: original `x228` run `gvaf99tz87ovnhssxw47mqt2` failed (`exit code 143`) during stall recovery; replacement preserved identical treatment knob.
+
+- **Stall/restart history (recorded):** both original runs stalled at step 0; controlled restarts executed with timestamped evidence in `artifacts/x227_x228/restarts/`. `x228` failed after restart and was replaced by `x228r`.
+
+- **Coverage + parsing (both lanes):**
+  - sampled steps pulled: `0/10/20/30/40/50`, max limit, all pages
+  - full-turn parsing complete, upload 500 count `0`
+  - dual coverage:
+    - nominal (`min(effective, nominal)/nominal`): `1.5625%` at each sampled step (`8/512`)
+    - ceiling (`min(effective, platform_ceiling)/platform_ceiling`): `100%` at each sampled step (`8/8`), stable ceiling across sampled steps
+  - reliability verdict: `diagnostic_with_caution` for both lanes (not strict nominal `diagnostic`)
+
+- **Delta accounting (strict):**
+  - `x227`: non-cap `pass/fail/missing = 1211/0/0`; cap `delta1/delta0/missing/other = 39/0/0/0`
+  - `x228r`: non-cap `pass/fail/missing = 1105/0/0`; cap `delta1/delta0/missing/other = 39/0/0/0`
+
+- **Action/candidate/phase breakdown:**
+  - `x227` action mix `build=458, upgrade=937, noop=1129`; candidate pool `build=4306, upgrade=2431, noop=2549`; phase action present in sampled turns is late-only.
+  - `x228r` action mix `build=432, upgrade=919, noop=1024`; candidate pool `build=4122, upgrade=2281, noop=2375`; phase action present in sampled turns is late-only.
+
+- **Choose/index reliability:**
+  - `x227`: `choose_out_of_range=25 (1.9260%)`, clamped `24`, residual unclamped `1`
+  - `x228r`: `choose_out_of_range=0`, clamped `1`, residual unclamped `0`
+
+- **Progression/horizon:**
+  - `x227`: `horizon_lower_bound >=33` -> progression `FAIL`
+  - `x228r`: `horizon_lower_bound >=30` -> progression `FAIL`
+
+- **Spend-primary metrics (target band 25-45%):**
+  - `x227`: `late_build_spend=91600`, `late_upgrade_spend=124600`, `late_upgrade_spend_lead_pct=36.0262%` -> in-band (`PASS`)
+  - `x228r`: `late_build_spend=86400`, `late_upgrade_spend=129800`, `late_upgrade_spend_lead_pct=50.2315%` -> out-of-band high (`PARTIAL/FAIL for gate`)
+  - pair spend delta (`x228r - x227`): `+14.2053pp` (treatment moved away from band)
+  - secondary trend only: count lead `x227=104.5852%`, `x228r=112.7315%`
+
+- **Transfer gate (baseline-canonical):** `PASS`
+  - `gate_status=pass`
+  - `gate_reason=Transfer gate thresholds satisfied`
+  - artifacts: `artifacts/x227_x228/transfer_x227_x228.json`, `artifacts/x227_x228/transfer_baseline_core_v1.json`, `artifacts/x227_x228/transfer_command.log`
+
+- **Decision:**
+  - **FULL-RUN: NO-GO**
+  - **DEPLOYMENT-READINESS: NO-GO**
+  - blockers: horizon progression fail on both lanes, treatment spend-primary out-of-band, strict choose/index cleanliness fail on control, and caution-tier (non-nominal) reliability.
+
+- **CLI drift note in this completion pass:** Prime CLI reports upgrade availability (`0.5.40` available, installed `0.5.37`); no command-surface drift observed in recorded startup checks.
+
+### X229/X230 Scale-Calibration Pair (ongoing; 2026-02-22 UTC)
+
+- **Objective:** identify the batch-size stability cliff before further policy-lever tuning, with x226u behavior knobs frozen and one-variable scale-only diffs.
+- **Parent baseline config:** `configs/lab/prime-td-macro-round-60-x226u.toml`
+- **Startup checks:** `artifacts/x229_x230/startup_checks/2026-02-22_155143_x229_x230_session/`
+  - captured: `prime --version`, `prime rl -h`, `prime rl run/get/progress/rollouts/logs -h`
+  - drift note: no command-surface drift vs prior snapshot; `get` supports `-o json` while `progress` emits JSON directly.
+- **Scale-only configs (one-variable):**
+  - `x229`: `configs/lab/prime-td-macro-round-60-x229.toml` (`batch_size 512 -> 128`)
+  - `x230`: `configs/lab/prime-td-macro-round-60-x230.toml` (`batch_size 512 -> 256`)
+  - diff proof: `artifacts/x229_x230/config_diff.txt`
+- **Launch record (concurrent):**
+  - `x229` run: `frdayu4wq4vl7zeax3g0eerx`
+  - `x230` run: `y7831efqbilfjnpjcrukkagm`
+  - launch artifact: `artifacts/x229_x230/launch/launch_summary.json`
+- **Stall/restart timeline (controlled, evidence-backed):**
+  - both runs stalled at step 0 after initial launch; controlled pair restart at `2026-02-22 05:01 UTC`
+  - both runs stalled again; second controlled pair restart at `2026-02-22 05:53 UTC`
+  - `x230` remained stalled while `x229` recovered; run-specific controlled restart for `x230` at `2026-02-22 06:08 UTC`
+  - evidence: `artifacts/x229_x230/restarts/pre_restart_snapshot_2026-02-22T05:01:07Z.txt`, `artifacts/x229_x230/restarts/restart_event_2026-02-22T05:01:25Z.txt`, `artifacts/x229_x230/restarts/pre_second_restart_snapshot_2026-02-22T05:53:09Z.txt`, `artifacts/x229_x230/restarts/second_restart_event_2026-02-22T05:53:28Z.txt`, `artifacts/x229_x230/restarts/x230_third_restart_event_2026-02-22T06:08:23Z.txt`
+- **Current status snapshot (not terminal):**
+  - `x229` recovered and is progressing: step 0 and step 1 succeeded, step 2 started (`06:13:38 UTC` success at step 1 in logs).
+  - `x230` latest restart session reached `Starting orchestrator step 0` but has not emitted sampled-step progress yet.
+  - monitor: `artifacts/x229_x230/monitor_status.log`
+- **Pending (after terminal completion):**
+  - strict full hygiene summaries (`x229/x230` analysis JSONs + pair summary + spend backfill)
+  - canonical transfer comparison (`--baseline-canonical`) and final FULL-RUN/DEPLOYMENT decisions.

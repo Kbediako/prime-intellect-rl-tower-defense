@@ -2670,30 +2670,68 @@ Notes:
 
 - **CLI drift note in this completion pass:** Prime CLI reports upgrade availability (`0.5.40` available, installed `0.5.37`); no command-surface drift observed in recorded startup checks.
 
-### X229/X230 Scale-Calibration Pair (ongoing; 2026-02-22 UTC)
+### X229/X230 Scale-Calibration Pair (completed; 2026-02-22 UTC)
 
 - **Objective:** identify the batch-size stability cliff before further policy-lever tuning, with x226u behavior knobs frozen and one-variable scale-only diffs.
 - **Parent baseline config:** `configs/lab/prime-td-macro-round-60-x226u.toml`
 - **Startup checks:** `artifacts/x229_x230/startup_checks/2026-02-22_155143_x229_x230_session/`
   - captured: `prime --version`, `prime rl -h`, `prime rl run/get/progress/rollouts/logs -h`
-  - drift note: no command-surface drift vs prior snapshot; `get` supports `-o json` while `progress` emits JSON directly.
+  - drift note: no command-surface drift vs prior snapshot.
 - **Scale-only configs (one-variable):**
   - `x229`: `configs/lab/prime-td-macro-round-60-x229.toml` (`batch_size 512 -> 128`)
   - `x230`: `configs/lab/prime-td-macro-round-60-x230.toml` (`batch_size 512 -> 256`)
   - diff proof: `artifacts/x229_x230/config_diff.txt`
-- **Launch record (concurrent):**
-  - `x229` run: `frdayu4wq4vl7zeax3g0eerx`
-  - `x230` run: `y7831efqbilfjnpjcrukkagm`
+- **Run IDs / terminal state:**
+  - `x229`: `frdayu4wq4vl7zeax3g0eerx` (`COMPLETED`, completed_at `2026-02-22 21:33 UTC`)
+  - `x230`: `y7831efqbilfjnpjcrukkagm` (`COMPLETED`, completed_at `2026-02-22 21:57 UTC`)
   - launch artifact: `artifacts/x229_x230/launch/launch_summary.json`
-- **Stall/restart timeline (controlled, evidence-backed):**
-  - both runs stalled at step 0 after initial launch; controlled pair restart at `2026-02-22 05:01 UTC`
-  - both runs stalled again; second controlled pair restart at `2026-02-22 05:53 UTC`
-  - `x230` remained stalled while `x229` recovered; run-specific controlled restart for `x230` at `2026-02-22 06:08 UTC`
-  - evidence: `artifacts/x229_x230/restarts/pre_restart_snapshot_2026-02-22T05:01:07Z.txt`, `artifacts/x229_x230/restarts/restart_event_2026-02-22T05:01:25Z.txt`, `artifacts/x229_x230/restarts/pre_second_restart_snapshot_2026-02-22T05:53:09Z.txt`, `artifacts/x229_x230/restarts/second_restart_event_2026-02-22T05:53:28Z.txt`, `artifacts/x229_x230/restarts/x230_third_restart_event_2026-02-22T06:08:23Z.txt`
-- **Current status snapshot (not terminal):**
-  - `x229` recovered and is progressing: step 0 and step 1 succeeded, step 2 started (`06:13:38 UTC` success at step 1 in logs).
-  - `x230` latest restart session reached `Starting orchestrator step 0` but has not emitted sampled-step progress yet.
-  - monitor: `artifacts/x229_x230/monitor_status.log`
-- **Pending (after terminal completion):**
-  - strict full hygiene summaries (`x229/x230` analysis JSONs + pair summary + spend backfill)
-  - canonical transfer comparison (`--baseline-canonical`) and final FULL-RUN/DEPLOYMENT decisions.
+
+#### Stall/restart history
+
+- controlled pair restart at `2026-02-22 05:01 UTC` after sustained step-0 no-movement.
+- controlled pair restart at `2026-02-22 05:53 UTC` after renewed sustained no-movement.
+- controlled run-specific restart for `x230` at `2026-02-22 06:08 UTC` while `x229` progressed.
+- evidence: `artifacts/x229_x230/restarts/pre_restart_snapshot_2026-02-22T05:01:07Z.txt`, `artifacts/x229_x230/restarts/restart_event_2026-02-22T05:01:25Z.txt`, `artifacts/x229_x230/restarts/pre_second_restart_snapshot_2026-02-22T05:53:09Z.txt`, `artifacts/x229_x230/restarts/second_restart_event_2026-02-22T05:53:28Z.txt`, `artifacts/x229_x230/restarts/x230_third_restart_event_2026-02-22T06:08:23Z.txt`.
+
+#### Full hygiene (strict)
+
+- sampled steps pulled: `0/10/20/30/40/50`, max limit, all pages, all turns.
+- dual coverage:
+  - `x229` nominal `6.25%` each sampled step (`8/128`), ceiling `100%` each sampled step (`8/8`).
+  - `x230` nominal `3.125%` each sampled step (`8/256`), ceiling `100%` each sampled step (`8/8`).
+- reliability verdict: both `diagnostic_with_caution` (ceiling-complete and delta-clean; nominal below strict diagnostic threshold).
+- non-cap delta checks:
+  - `x229`: `pass/fail/missing = 1238/0/0`; cap `delta1/delta0/missing/other = 45/0/0/0`
+  - `x230`: `pass/fail/missing = 1119/0/0`; cap `delta1/delta0/missing/other = 38/0/0/0`
+- choose/index:
+  - `x229`: `choose_out_of_range=0`, clamped `1`, residual unclamped `0`
+  - `x230`: `choose_out_of_range=1`, clamped `1`, residual unclamped `0`
+- action mix / candidate pool / phase (late-only sampled turns):
+  - `x229` action mix `build=491, upgrade=1019, noop=1080`; candidate pool `build=3096, upgrade=2464, noop=2590`
+  - `x230` action mix `build=443, upgrade=868, noop=1098`; candidate pool `build=4160, upgrade=2270, noop=2410`
+- progression / horizon lower-bound:
+  - `x229`: `>=39` (`FAIL` vs required `>=56`)
+  - `x230`: `>=33` (`FAIL` vs required `>=56`)
+
+#### Spend-primary metrics
+
+- `x229`: `late_build_spend=98200`, `late_upgrade_spend=137560`, `late_upgrade_spend_lead_pct=40.0815%` (in-band), secondary count lead `107.5356%`.
+- `x230`: `late_build_spend=88600`, `late_upgrade_spend=118340`, `late_upgrade_spend_lead_pct=33.5666%` (in-band), secondary count lead `95.9368%`.
+- pair spend delta (`x230 - x229`): `-6.5149pp`; reduction (`x229 - x230`): `+6.5149pp`.
+- artifacts: `artifacts/x229_x230/x229/analysis_summary.json`, `artifacts/x229_x230/x230/analysis_summary.json`, `artifacts/x229_x230/spend_backfill_x229_x230.json`.
+
+#### Transfer gate
+
+- commands: baseline generation + canonical transfer compare (`--baseline-canonical`) recorded in `artifacts/x229_x230/transfer_command.log`.
+- result: `gate_status=pass`, `gate_reason="Transfer gate thresholds satisfied"`.
+- artifacts: `artifacts/x229_x230/transfer_x229_x230.json`, `artifacts/x229_x230/transfer_baseline_core_v1.json`.
+
+#### Scale-cliff decision (explicit rule applied)
+
+- PASS-for-scale requires: progression `>=56`, non-cap fail/missing `0`, residual unclamped `0`, spend in `25-45`, transfer `PASS`.
+- both `x229` and `x230` fail progression gate; all other required gates pass.
+- **Scale cliff status:** `unresolved`.
+- **Required action:** HOLD further scale-up and run immediate `x225` anchor replicate (`batch_size=4`) to confirm baseline health.
+- **FULL-RUN:** `NO-GO`
+- **DEPLOYMENT-READINESS:** `NO-GO`
+- decision artifacts: `artifacts/x229_x230/analysis_pair_summary.json`, `artifacts/x229_x230/final_decision.md`.

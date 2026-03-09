@@ -1,0 +1,48 @@
+name = "prime-td-actual-game-command-sanity-x530"
+model = "Qwen/Qwen3-4B-Instruct-2507"
+max_steps = 20
+batch_size = 8
+rollouts_per_example = 1
+
+[sampling]
+max_tokens = 64
+temperature = 0.2
+
+[[env]]
+id = "kbediako/tower_defence@0.2.37"
+
+[env.args]
+num_examples = -1
+seed_start = 0
+
+[env.args.config]
+wrapper = "actual_game_command"
+
+[env.args.config.dataset]
+examples_path = "data/actual_game_command/train_examples.json"
+
+[env.args.config.reward_weights]
+format = 0.5
+env = 1.0
+
+[eval]
+interval = 10
+num_examples = -1
+rollouts_per_example = 1
+
+[[eval.env]]
+id = "kbediako/tower_defence@0.2.37"
+
+[eval.env.args]
+num_examples = -1
+seed_start = 0
+
+[eval.env.args.config]
+wrapper = "actual_game_command"
+
+[eval.env.args.config.dataset]
+examples_path = "data/actual_game_command/eval_examples.json"
+
+[eval.env.args.config.reward_weights]
+format = 0.5
+env = 1.0

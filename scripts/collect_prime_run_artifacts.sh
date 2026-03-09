@@ -50,11 +50,7 @@ if not steps:
     print("")
     raise SystemExit(0)
 steps = sorted(steps)
-if len(steps) <= 3:
-    chosen = steps
-else:
-    chosen = [steps[0], steps[len(steps)//2], steps[-1]]
-print(" ".join(str(s) for s in chosen))
+print(" ".join(str(s) for s in steps))
 PY
 )
 

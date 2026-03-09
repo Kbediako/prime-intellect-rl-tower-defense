@@ -13,7 +13,9 @@ def _ensure_test_deps() -> None:
         vf.Info = dict
 
         class SingleTurnEnv:  # pragma: no cover - stub
-            pass
+            def __init__(self, *args, **kwargs) -> None:
+                self.args = args
+                self.kwargs = kwargs
 
         vf.SingleTurnEnv = SingleTurnEnv
 
@@ -91,6 +93,13 @@ def _lookahead_delta(config: dict, obs: dict, rounds: int) -> float:
     return after_future - baseline_future
 
 
+def _observation_payload_from_message(content: str) -> dict:
+    prefix = "Observation: "
+    if content.startswith(prefix):
+        content = content[len(prefix) :]
+    return json.loads(content)
+
+
 class RewardShapingChooseTest(unittest.TestCase):
     def test_macro_prompt_uses_only_max_index_guidance(self) -> None:
         prompt = env.MACRO_SYSTEM_PROMPT
@@ -100,6 +109,31 @@ class RewardShapingChooseTest(unittest.TestCase):
         self.assertNotIn("equivalently", prompt)
         self.assertNotIn("action_candidates_count-1", prompt)
         self.assertIn("special_candidate_indices.noop", prompt)
+
+    def test_macro_round_dataset_uses_index_grounding_prompt_when_enabled(self) -> None:
+        config = env.deep_merge(
+            env.DEFAULT_CONFIG,
+            {
+                "wrapper": "macro_round",
+                "observation": {
+                    "macro_round_index_grounding": True,
+                },
+                "dataset": {
+                    "num_seeds": 1,
+                },
+            },
+        )
+
+        dataset = env._build_dataset(config, num_examples=1, seed_start=0)
+        prompt = dataset["prompt"][0]
+
+        self.assertEqual(prompt[0]["content"], env.MACRO_INDEX_GROUNDED_SYSTEM_PROMPT)
+        payload = _observation_payload_from_message(prompt[1]["content"])
+        candidates = payload.get("action_candidates", [])
+        self.assertTrue(candidates)
+        for index, candidate in enumerate(candidates):
+            self.assertIsInstance(candidate, dict)
+            self.assertEqual(candidate.get("index"), index)
 
     def test_macro_round_clamps_off_by_one_to_noop(self) -> None:
         # Construct a minimal macro-round state and force the known failure mode:
@@ -718,6 +752,7 @@ class RewardShapingChooseTest(unittest.TestCase):
         self.assertIsInstance(candidates, list)
         self.assertEqual(payload.get("action_candidates_count"), len(candidates))
         self.assertEqual(payload.get("action_candidates_max_index"), len(candidates) - 1)
+        self.assertFalse(any("index" in c for c in candidates if isinstance(c, dict)))
 
         # Macro-round filter should remove start_round; noop should remain and be indexable.
         self.assertFalse(any(c.get("type") == "start_round" for c in candidates if isinstance(c, dict)))
@@ -729,6 +764,41 @@ class RewardShapingChooseTest(unittest.TestCase):
         self.assertGreaterEqual(noop_index, 0)
         self.assertLess(noop_index, len(candidates))
         self.assertEqual(candidates[noop_index].get("type"), "noop")
+
+    def test_macro_round_outgoing_observation_includes_candidate_indices_when_enabled(self) -> None:
+        config = env.deep_merge(
+            env.DEFAULT_CONFIG,
+            {
+                "wrapper": "macro_round",
+                "rules": {
+                    "auto_advance_round": True,
+                    "prep_actions_per_round": 2,
+                    "require_tower_before_start": False,
+                },
+                "observation": {
+                    "max_action_candidates": 10,
+                    "macro_round_index_grounding": True,
+                },
+                "dataset": {
+                    "num_seeds": 1,
+                },
+            },
+        )
+
+        macro_env = env.TowerDefenseMacroRoundEnv(config, num_examples=1, seed_start=0)
+        state = {"info": {"seed": 6}}
+        asyncio.run(macro_env.setup_state(state))
+
+        plan = {"type": "plan", "actions": []}
+        messages = [{"role": "assistant", "content": json.dumps(plan)}]
+        response = asyncio.run(macro_env.env_response(messages, state))
+        payload = _observation_payload_from_message(response[-1]["content"])
+
+        candidates = payload.get("action_candidates", [])
+        self.assertTrue(candidates)
+        for index, candidate in enumerate(candidates):
+            self.assertIsInstance(candidate, dict)
+            self.assertEqual(candidate.get("index"), index)
 
     def test_load_from_observation_clamps_upgrade_tiers(self) -> None:
         config = env.deep_merge(env.DEFAULT_CONFIG, {})

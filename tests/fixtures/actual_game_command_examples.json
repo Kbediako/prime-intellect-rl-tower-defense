@@ -1,0 +1,83 @@
+{
+  "examples": [
+    {
+      "bridge_input": {
+        "version": "td.multiplayer.llm-bridge.input.v1",
+        "tick": 12,
+        "stateVersion": 18,
+        "stateDigest": "abc123",
+        "economy": {
+          "players": {
+            "bot-bridge": {
+              "cash": 250
+            }
+          }
+        },
+        "lobby": {
+          "lobbyId": "fixture-lobby"
+        },
+        "playerId": "bot-bridge",
+        "allowedCommands": [
+          "place_tower",
+          "upgrade_tower",
+          "trigger_next_round"
+        ],
+        "lastCommandResults": [
+          {
+            "id": 9,
+            "command": {
+              "type": "place_tower",
+              "playerId": "bot-bridge",
+              "payload": {
+                "type": "dart",
+                "x": 336,
+                "y": 64
+              }
+            },
+            "result": {
+              "success": true,
+              "towerId": 7
+            }
+          }
+        ],
+        "deadlineAt": 1738800000000,
+        "budgetMs": 1200,
+        "state": {
+          "round": 2,
+          "status": "intermission",
+          "lives": 100,
+          "width": 960,
+          "height": 540,
+          "towers": [
+            {
+              "id": 7,
+              "type": "dart",
+              "position": {
+                "x": 336,
+                "y": 64
+              },
+              "invested": 100,
+              "upgrades": {
+                "top": 0,
+                "middle": 0,
+                "bottom": 0
+              }
+            }
+          ],
+          "enemies": []
+        }
+      },
+      "target": {
+        "kind": "command",
+        "commandType": "upgrade_tower",
+        "payload": {
+          "towerId": 7,
+          "path": "top"
+        }
+      },
+      "metadata": {
+        "source": "fixture"
+      }
+    }
+  ]
+}

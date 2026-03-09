@@ -169,6 +169,7 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "max_towers": 50,
         "max_threats": 5,
         "max_path_points": None,
+        "macro_round_index_grounding": False,
     },
     "dataset": {
         "rollout_steps": 0,
@@ -1275,6 +1276,40 @@ MACRO_SYSTEM_PROMPT = (
     "{\"type\": \"choose\", \"index\": 1}]}"
 )
 
+MACRO_INDEX_GROUNDED_SYSTEM_PROMPT = (
+    "You are playing a tower-defense game. Respond with ONLY a single JSON plan "
+    "object and no extra text. The plan contains 0-2 prep actions, each selecting "
+    "a candidate by index. Copy action_candidates[*].index exactly for every "
+    "choose action; never renumber visible candidates or do index math after "
+    "filtering/truncation. Use ONLY action_candidates_max_index to confirm the "
+    "copied choose index is within 0..action_candidates_max_index. Never use "
+    "action_candidates_count as an index or for index math. If "
+    "action_candidates_max_index < 0, output an empty actions list. "
+    "For noop, always set index to special_candidate_indices.noop exactly (copy "
+    "the value; no math). If unsure, choose special_candidate_indices.noop. "
+    "Never output index == action_candidates_count. Example: "
+    "{\"type\": \"plan\", \"actions\": [{\"type\": \"choose\", \"index\": 0}, "
+    "{\"type\": \"choose\", \"index\": 1}]}"
+)
+
+
+def _macro_round_index_grounding_enabled(config: Dict[str, Any] | None) -> bool:
+    if not isinstance(config, dict):
+        return False
+    observation_cfg = config.get("observation")
+    if not isinstance(observation_cfg, dict):
+        return False
+    return bool(observation_cfg.get("macro_round_index_grounding", False))
+
+
+def _annotate_action_candidate_indices(obs: Dict[str, Any]) -> None:
+    candidates = obs.get("action_candidates")
+    if not isinstance(candidates, list):
+        return
+    for index, candidate in enumerate(candidates):
+        if isinstance(candidate, dict):
+            candidate["index"] = index
+
 
 def _update_action_candidate_index_helpers(obs: Dict[str, Any]) -> None:
     """Add index helpers so models can stay in-bounds without arithmetic."""
@@ -1338,6 +1373,13 @@ def _filter_macro_round_candidates(obs: Dict[str, Any]) -> List[Dict[str, Any]]:
     if isinstance(valid_actions, dict):
         valid_actions["start_round"] = False
     return filtered
+
+
+def _prepare_macro_round_observation(obs: Dict[str, Any], config: Dict[str, Any] | None) -> List[Dict[str, Any]]:
+    candidates = _filter_macro_round_candidates(obs)
+    if _macro_round_index_grounding_enabled(config):
+        _annotate_action_candidate_indices(obs)
+    return candidates
 
 
 def _completion_to_text(completion: vf.Messages) -> str:
@@ -1629,6 +1671,7 @@ def _build_dataset(
     prompts: List[List[Dict[str, str]]] = []
     infos: List[Dict[str, Any]] = []
     simulator = TowerDefenseEnv(config)
+    macro_index_grounding = _macro_round_index_grounding_enabled(simulator.config)
     dataset_cfg = config.get("dataset", {}) if isinstance(config.get("dataset"), dict) else {}
     rollout_steps = int(dataset_cfg.get("rollout_steps", 0))
     policy = str(dataset_cfg.get("policy", "random"))
@@ -1636,7 +1679,9 @@ def _build_dataset(
     rules_cfg = config.get("rules", {}) if isinstance(config.get("rules"), dict) else {}
     require_choose = bool(rules_cfg.get("require_choose", False))
     if wrapper_mode == "macro_round":
-        system_prompt = MACRO_SYSTEM_PROMPT
+        system_prompt = (
+            MACRO_INDEX_GROUNDED_SYSTEM_PROMPT if macro_index_grounding else MACRO_SYSTEM_PROMPT
+        )
     elif require_choose:
         system_prompt = CHOOSE_SYSTEM_PROMPT
     else:
@@ -1704,7 +1749,7 @@ def _build_dataset(
         obs_for_prompt = obs
         if wrapper_mode == "macro_round":
             obs_for_prompt = copy.deepcopy(obs)
-            _filter_macro_round_candidates(obs_for_prompt)
+            _prepare_macro_round_observation(obs_for_prompt, simulator.config)
         eval_summary = _evaluate_obs(obs_for_prompt) if (filter_enabled or dominance_enabled) else None
         if filter_enabled:
             if eval_summary is None:
@@ -2085,7 +2130,7 @@ class TowerDefenseMacroRoundEnv(vf.MultiTurnEnv):
     async def env_response(self, messages: vf.Messages, state: vf.State) -> vf.Messages:
         simulator: TowerDefenseEnv = state["simulator"]
         obs_for_plan = simulator._observation()
-        candidates = _filter_macro_round_candidates(obs_for_plan)
+        candidates = _prepare_macro_round_observation(obs_for_plan, simulator.config)
         content = _completion_to_text(messages)
         actions, strict = _parse_plan_text(content)
         format_reward = 1.0 if strict else 0.0
@@ -2228,7 +2273,7 @@ class TowerDefenseMacroRoundEnv(vf.MultiTurnEnv):
 
         if last_obs is None:
             last_obs = simulator._observation()
-        _filter_macro_round_candidates(last_obs)
+        _prepare_macro_round_observation(last_obs, simulator.config)
 
         end_round_value = simulator.state.round if simulator.state is not None else start_round_value
         prep_after = simulator.state.prep_actions_remaining if simulator.state is not None else 0

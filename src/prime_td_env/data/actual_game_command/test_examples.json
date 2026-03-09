@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "td.actual_game.command_examples.v1",
+  "examples": [
+    {
+      "summary": {
+        "schemaVersion": "td.actual_game.command_summary.v1",
+        "tick": 1,
+        "stateVersion": 1,
+        "playerId": "fixture-player",
+        "allowedCommands": [
+          "trigger_next_round"
+        ],
+        "round": 1,
+        "status": "intermission",
+        "lives": 100,
+        "playerCash": 50,
+        "map": {
+          "width": 960,
+          "height": 540
+        },
+        "safePlacementAnchors": [
+          {
+            "x": 336,
+            "y": 64
+          }
+        ],
+        "playerTowerIds": [],
+        "playerTowerCount": 0,
+        "towers": [],
+        "enemyCount": 0,
+        "commandResultsTail": []
+      },
+      "target": {
+        "kind": "command",
+        "commandType": "trigger_next_round",
+        "payload": {}
+      },
+      "metadata": {
+        "summary_sha256": "fixture-test-summary",
+        "target_sha256": "fixture-test-target",
+        "source_instances": [
+          {
+            "source_path": "tests/fixtures/actual_game_command_examples.json",
+            "source_index": 0
+          }
+        ]
+      }
+    }
+  ]
+}

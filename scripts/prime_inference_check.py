@@ -13,7 +13,11 @@ from typing import Any, Dict, List
 
 def fetch_models(base_url: str, api_key: str, team_id: str | None) -> List[str]:
     url = base_url.rstrip("/") + "/models"
-    headers = {"Authorization": f"Bearer {api_key}"}
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Accept": "application/json",
+        "User-Agent": "prime-intellect-rl-tower-defense/inference-check",
+    }
     if team_id:
         headers["X-Prime-Team-ID"] = team_id
     request = urllib.request.Request(url, headers=headers)

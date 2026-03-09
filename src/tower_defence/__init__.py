@@ -1,11 +1,11 @@
-"""Compatibility alias for the Tower Defence environment.
+"""Compatibility alias for the Tower Defence environment package.
 
-The canonical implementation lives in `prime_td_env`. This module exists so the
-hub environment name can be a valid Python import (`tower_defence`) while
-sharing the same implementation.
+The hosted env slug resolves to ``tower_defence`` during installation, so this
+module must delegate through the same loader entrypoint as ``env.py`` and
+``prime_td_env``. Importing the legacy environment directly bypasses wrapper
+dispatch and silently routes hosted evals back onto the old macro-round env.
 """
 
-from prime_td_env.environment import load_environment
+from prime_td_env.loader import load_environment
 
 __all__ = ["load_environment"]
-

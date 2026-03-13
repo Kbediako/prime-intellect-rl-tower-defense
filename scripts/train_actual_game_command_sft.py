@@ -71,11 +71,34 @@ def _load_transformers_runtime() -> Dict[str, Any]:
 
 
 def _default_torch_dtype(torch: Any) -> Any:
+    if torch.cuda.is_available():
+        if torch.cuda.is_bf16_supported():
+            return torch.bfloat16
+        return torch.float16
+    if _mps_available(torch):
+        return torch.float16
+    return torch.float32
+
+
+def _mps_available(torch: Any) -> bool:
+    backends = getattr(torch, "backends", None)
+    mps = getattr(backends, "mps", None)
+    if mps is None:
+        return False
+    return bool(mps.is_built() and mps.is_available())
+
+
+def _maybe_configure_non_cuda_runtime(*, torch: Any, model: Any) -> None:
+    if _mps_available(torch):
+        model.to("mps")
+
+
+def _apply_device_training_args(*, training_kwargs: Dict[str, Any], torch: Any, training_args_cls: Any) -> None:
+    training_signature = inspect.signature(training_args_cls.__init__)
+    if _mps_available(torch) and "use_mps_device" in training_signature.parameters:
+        training_kwargs["use_mps_device"] = True
     if not torch.cuda.is_available():
-        return torch.float32
-    if torch.cuda.is_bf16_supported():
-        return torch.bfloat16
-    return torch.float16
+        training_kwargs["dataloader_pin_memory"] = False
 
 
 def _load_jsonl_rows(path: Path) -> List[Dict[str, Any]]:
@@ -247,6 +270,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=17, help="Random seed. Default: 17")
     parser.add_argument("--load-in-4bit", action="store_true", help="Load the base model in 4-bit quantized mode.")
     parser.add_argument(
+        "--gradient-checkpointing",
+        action="store_true",
+        help="Enable gradient checkpointing to reduce local training memory usage.",
+    )
+    parser.add_argument(
         "--save-tokenizer",
         action="store_true",
         help="Also save tokenizer files into --output-dir. Disabled by default to keep adapter bundles small.",
@@ -294,7 +322,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     model_kwargs: Dict[str, Any] = {
         "trust_remote_code": True,
+        "low_cpu_mem_usage": True,
     }
+    if args.load_in_4bit and not torch.cuda.is_available():
+        raise SystemExit("4-bit local SFT in this script requires CUDA. Rerun without --load-in-4bit on MPS/CPU.")
     if torch.cuda.is_available():
         model_kwargs["device_map"] = "auto"
     if args.load_in_4bit:
@@ -308,6 +339,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         model_kwargs["torch_dtype"] = _default_torch_dtype(torch)
 
     model = AutoModelForCausalLM.from_pretrained(args.model, **model_kwargs)
+    _maybe_configure_non_cuda_runtime(torch=torch, model=model)
     if args.load_in_4bit:
         model = prepare_model_for_kbit_training(model)
     peft_config = LoraConfig(
@@ -318,6 +350,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         target_modules=list(args.target_modules),
     )
     model = get_peft_model(model, peft_config)
+    if args.gradient_checkpointing and hasattr(model, "gradient_checkpointing_enable"):
+        if hasattr(model, "enable_input_require_grads"):
+            model.enable_input_require_grads()
+        model.gradient_checkpointing_enable()
     model.config.use_cache = False
 
     training_kwargs: Dict[str, Any] = {
@@ -340,6 +376,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "save_total_limit": 1,
         "seed": args.seed,
     }
+    if args.gradient_checkpointing:
+        training_kwargs["gradient_checkpointing"] = True
+    _apply_device_training_args(training_kwargs=training_kwargs, torch=torch, training_args_cls=TrainingArguments)
     training_signature = inspect.signature(TrainingArguments.__init__)
     strategy_key = "eval_strategy" if "eval_strategy" in training_signature.parameters else "evaluation_strategy"
     training_kwargs[strategy_key] = "epoch"
@@ -377,6 +416,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "weight_decay": args.weight_decay,
             "seed": args.seed,
             "load_in_4bit": bool(args.load_in_4bit),
+            "gradient_checkpointing": bool(args.gradient_checkpointing),
             "save_tokenizer": bool(args.save_tokenizer),
             "target_modules": list(args.target_modules),
         },

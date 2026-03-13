@@ -30,6 +30,23 @@ const DEFAULT_REPORT_PATH = path.join(DEFAULT_OUTPUT_DIR, "relabel_report.json")
 const DEFAULT_TEACHER_MODE = "hybrid-opening";
 const SUPPORTED_TEACHER_MODES = new Set(["codex-safe", "deterministic", "hybrid-opening"]);
 const COMMAND_SEQUENCE = ["place_tower", "upgrade_tower", "sell_tower", "trigger_next_round"];
+const SUMMARY_SAFE_PLACEMENTS = [
+  { x: 60, y: 60 },
+  { x: 336, y: 64 },
+  { x: 432, y: 64 },
+  { x: 336, y: 152 },
+  { x: 432, y: 152 },
+  { x: 336, y: 230 },
+  { x: 336, y: 310 },
+  { x: 600, y: 150 },
+  { x: 632, y: 228 },
+  { x: 714, y: 312 },
+  { x: 900, y: 180 },
+  { x: 900, y: 300 },
+  { x: 630, y: 499 },
+  { x: 760, y: 500 },
+  { x: 900, y: 500 },
+];
 
 function normalizeNonEmptyString(value, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
@@ -67,6 +84,28 @@ function toTowerId(value) {
 
 function getStateTowers(input = {}) {
   return Array.isArray(input?.state?.towers) ? input.state.towers : [];
+}
+
+function coordinateKey(x, y) {
+  return `${Math.round(Number(x))}:${Math.round(Number(y))}`;
+}
+
+function canonicalizeValue(value) {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalizeValue(entry));
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.keys(value)
+        .sort()
+        .map((key) => [key, canonicalizeValue(value[key])])
+    );
+  }
+  return value;
+}
+
+function payloadEquals(left = {}, right = {}) {
+  return JSON.stringify(canonicalizeValue(left)) === JSON.stringify(canonicalizeValue(right));
 }
 
 function buildKnownTowerOwners(input = {}) {
@@ -306,6 +345,224 @@ function chooseHybridOpeningDecision({
     : codexDecision;
 }
 
+function decisionIdentity(row = {}) {
+  const decision = row?.decision ?? {};
+  const provenance = decision?.provenance ?? {};
+  const input = row?.input ?? {};
+  return {
+    requestId: normalizeNonEmptyString(provenance?.requestId, ""),
+    playerId: normalizeNonEmptyString(input?.playerId, ""),
+    commandType: normalizeNonEmptyString(decision?.commandType, "").toLowerCase(),
+    payload:
+      decision?.payload && typeof decision.payload === "object" && !Array.isArray(decision.payload)
+        ? decision.payload
+        : {},
+    stateVersion: Number.isInteger(input?.stateVersion) ? input.stateVersion : null,
+  };
+}
+
+function matchHistoricalCommandResult(row = {}) {
+  const decision = row?.decision ?? {};
+  if (decision?.kind !== "command") {
+    return null;
+  }
+
+  const { requestId, playerId, commandType, payload, stateVersion } = decisionIdentity(row);
+  const commandResults = Array.isArray(row?.poll?.commandResults) ? row.poll.commandResults : [];
+
+  if (requestId) {
+    for (let index = commandResults.length - 1; index >= 0; index -= 1) {
+      const candidate = commandResults[index];
+      const provenance = candidate?.command?.provenance ?? {};
+      if (normalizeNonEmptyString(provenance?.requestId, "") === requestId) {
+        return candidate;
+      }
+    }
+  }
+
+  for (let index = commandResults.length - 1; index >= 0; index -= 1) {
+    const candidate = commandResults[index];
+    const command = candidate?.command ?? {};
+    const provenance = command?.provenance ?? {};
+    const candidatePayload =
+      command?.payload && typeof command.payload === "object" && !Array.isArray(command.payload)
+        ? command.payload
+        : {};
+    if (normalizeNonEmptyString(command?.playerId, "") !== playerId) {
+      continue;
+    }
+    if (normalizeNonEmptyString(command?.type, "").toLowerCase() !== commandType) {
+      continue;
+    }
+    if (!payloadEquals(candidatePayload, payload)) {
+      continue;
+    }
+    const candidateStateVersion = Number.isInteger(provenance?.stateVersion) ? provenance.stateVersion : null;
+    if (stateVersion != null && candidateStateVersion != null && candidateStateVersion !== stateVersion) {
+      continue;
+    }
+    return candidate;
+  }
+
+  return null;
+}
+
+function getHistoricalFailureReason(row = {}) {
+  const matched = matchHistoricalCommandResult(row);
+  const result = matched?.result ?? {};
+  if (result?.success !== false) {
+    return "";
+  }
+  return normalizeNonEmptyString(result?.reasonCode ?? result?.reason, "");
+}
+
+function repairIdentityMatchesHistorical(row = {}, decision = {}) {
+  if (decision?.kind !== "command") {
+    return false;
+  }
+  const historical = decisionIdentity(row);
+  const historicalPayload = historical.payload ?? {};
+  const currentPayload =
+    decision?.payload && typeof decision.payload === "object" && !Array.isArray(decision.payload)
+      ? decision.payload
+      : {};
+  const historicalCommandType = normalizeNonEmptyString(historical.commandType, "").toLowerCase();
+  const currentCommandType = normalizeNonEmptyString(decision?.commandType, "").toLowerCase();
+  if (!historicalCommandType || historicalCommandType !== currentCommandType) {
+    return false;
+  }
+  if (currentCommandType === "place_tower") {
+    return normalizeNonEmptyString(historicalPayload?.type, "").toLowerCase()
+      === normalizeNonEmptyString(currentPayload?.type, "").toLowerCase();
+  }
+  if (currentCommandType === "upgrade_tower") {
+    return String(historicalPayload?.towerId ?? "") === String(currentPayload?.towerId ?? "")
+      && normalizeNonEmptyString(historicalPayload?.path, "").toLowerCase()
+        === normalizeNonEmptyString(currentPayload?.path, "").toLowerCase();
+  }
+  return payloadEquals(historicalPayload, currentPayload);
+}
+
+function selectSummaryPlacements(input = {}) {
+  const mapWidth = Number.isFinite(input?.state?.width) ? input.state.width : 960;
+  const mapHeight = Number.isFinite(input?.state?.height) ? input.state.height : 540;
+  return SUMMARY_SAFE_PLACEMENTS.map((anchor) => ({
+    x: Math.max(40, Math.min(Math.floor(mapWidth - 40), Math.round(anchor.x))),
+    y: Math.max(40, Math.min(Math.floor(mapHeight - 40), Math.round(anchor.y))),
+  }));
+}
+
+function getVisibleOccupiedPlacementKeys(input = {}) {
+  const occupied = new Set();
+  for (const tower of getStateTowers(input)) {
+    const position = tower?.position;
+    if (!position || !Number.isFinite(position?.x) || !Number.isFinite(position?.y)) {
+      continue;
+    }
+    occupied.add(coordinateKey(position.x, position.y));
+  }
+  return occupied;
+}
+
+function repairInvalidPlacementDecision(row = {}, decision = {}) {
+  if (decision?.kind !== "command" || decision?.commandType !== "place_tower") {
+    return decision;
+  }
+  if (getHistoricalFailureReason(row) !== "Invalid placement") {
+    return decision;
+  }
+  if (normalizeNonEmptyString(decisionIdentity(row).commandType, "").toLowerCase() !== "place_tower") {
+    return decision;
+  }
+
+  const originalPayload =
+    row?.decision?.payload && typeof row.decision.payload === "object" && !Array.isArray(row.decision.payload)
+      ? row.decision.payload
+      : decision?.payload && typeof decision.payload === "object" && !Array.isArray(decision.payload)
+        ? decision.payload
+        : {};
+  const originalX = Number.isFinite(originalPayload?.x) ? Number(originalPayload.x) : null;
+  const originalY = Number.isFinite(originalPayload?.y) ? Number(originalPayload.y) : null;
+  const occupied = getVisibleOccupiedPlacementKeys(row?.input ?? {});
+  const candidates = selectSummaryPlacements(row?.input ?? {}).filter((anchor) => {
+    const key = coordinateKey(anchor.x, anchor.y);
+    if (occupied.has(key)) {
+      return false;
+    }
+    if (originalX != null && originalY != null && key === coordinateKey(originalX, originalY)) {
+      return false;
+    }
+    return true;
+  });
+  if (candidates.length === 0) {
+    return decision;
+  }
+  candidates.sort((left, right) => {
+    const leftDistance =
+      (left.x - (originalX ?? left.x)) ** 2 + (left.y - (originalY ?? left.y)) ** 2;
+    const rightDistance =
+      (right.x - (originalX ?? right.x)) ** 2 + (right.y - (originalY ?? right.y)) ** 2;
+    if (leftDistance !== rightDistance) {
+      return leftDistance - rightDistance;
+    }
+    if (left.y !== right.y) {
+      return left.y - right.y;
+    }
+    return left.x - right.x;
+  });
+  const repaired = candidates[0];
+  return {
+    ...decision,
+    payload: {
+      type: normalizeNonEmptyString(originalPayload?.type, decision?.payload?.type ?? "dart").toLowerCase(),
+      x: repaired.x,
+      y: repaired.y,
+    },
+    provenance:
+      decision?.provenance && typeof decision.provenance === "object"
+        ? {
+            ...decision.provenance,
+            repair: "invalid_placement_safe_anchor",
+          }
+        : {
+            repair: "invalid_placement_safe_anchor",
+          },
+  };
+}
+
+function repairInsufficientCashDecision(row = {}, decision = {}) {
+  if (decision?.kind !== "command") {
+    return decision;
+  }
+  const failureReason = getHistoricalFailureReason(row);
+  if (failureReason !== "INSUFFICIENT_PLAYER_CASH") {
+    return decision;
+  }
+  if (!repairIdentityMatchesHistorical(row, decision)) {
+    return decision;
+  }
+  const commandType = normalizeNonEmptyString(decision?.commandType, "").toLowerCase();
+  if (commandType !== "place_tower" && commandType !== "upgrade_tower") {
+    return decision;
+  }
+  if (getStateStatus(row?.input ?? {}) !== "active") {
+    return decision;
+  }
+  return {
+    kind: "noop",
+    reason: "waiting_for_resources",
+    provenance:
+      decision?.provenance && typeof decision.provenance === "object"
+        ? {
+            ...decision.provenance,
+            repair: "insufficient_cash_wait",
+          }
+        : {
+            repair: "insufficient_cash_wait",
+          },
+  };
+}
+
 async function relabelSourceRows({
   sourcePath,
   teacherMode,
@@ -353,6 +610,8 @@ async function relabelSourceRows({
         hybridOpeningOverrides += 1;
       }
     }
+    selectedDecision = repairInvalidPlacementDecision(row, selectedDecision);
+    selectedDecision = repairInsufficientCashDecision(row, selectedDecision);
 
     const teacherDecision = buildTeacherDecision(normalizeTeacherDecisionForRow(selectedDecision, input), {
       teacherMode,
@@ -381,6 +640,7 @@ async function relabelSourceRows({
         teacher_mode: teacherMode,
         historical_decision_kind: normalizeNonEmptyString(row?.decision?.kind, "unknown"),
         historical_command_type: normalizeNonEmptyString(row?.decision?.commandType, ""),
+        historical_failure_reason: getHistoricalFailureReason(row),
       },
     });
   }

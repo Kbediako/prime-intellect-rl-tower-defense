@@ -47,11 +47,26 @@ def _load_transformers_runtime() -> Tuple[Any, Any, Any, Any, Any]:
 
 
 def _default_torch_dtype(torch: Any) -> Any:
-    if not torch.cuda.is_available():
-        return torch.float32
-    if torch.cuda.is_bf16_supported():
-        return torch.bfloat16
-    return torch.float16
+    if torch.cuda.is_available():
+        if torch.cuda.is_bf16_supported():
+            return torch.bfloat16
+        return torch.float16
+    if _mps_available(torch):
+        return torch.float16
+    return torch.float32
+
+
+def _mps_available(torch: Any) -> bool:
+    backends = getattr(torch, "backends", None)
+    mps = getattr(backends, "mps", None)
+    if mps is None:
+        return False
+    return bool(mps.is_built() and mps.is_available())
+
+
+def _maybe_move_model(*, torch: Any, model: Any) -> None:
+    if _mps_available(torch):
+        model.to("mps")
 
 
 def _model_device(model: Any) -> Any:
@@ -75,6 +90,8 @@ def _load_model_bundle(
     model_kwargs: Dict[str, Any] = {
         "trust_remote_code": True,
     }
+    if load_in_4bit and not torch.cuda.is_available():
+        raise SystemExit("4-bit local eval in this script requires CUDA. Rerun without --load-in-4bit on MPS/CPU.")
     if torch.cuda.is_available():
         model_kwargs["device_map"] = "auto"
     if load_in_4bit:
@@ -88,8 +105,10 @@ def _load_model_bundle(
         model_kwargs["torch_dtype"] = _default_torch_dtype(torch)
 
     model = AutoModelForCausalLM.from_pretrained(model_name, **model_kwargs)
+    _maybe_move_model(torch=torch, model=model)
     if adapter_path is not None:
         model = PeftModel.from_pretrained(model, str(adapter_path))
+        _maybe_move_model(torch=torch, model=model)
     model.eval()
     return {
         "torch": torch,

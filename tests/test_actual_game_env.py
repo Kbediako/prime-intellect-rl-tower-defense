@@ -124,6 +124,15 @@ class ActualGameEnvTest(unittest.TestCase):
         self.assertEqual(summary["playerTowerIds"], [7])
         self.assertEqual(summary["playerTowerCount"], 1)
 
+    def test_create_command_summary_excludes_occupied_safe_anchor(self) -> None:
+        example = self._load_fixture_example()
+        summary = actual_env.create_command_summary_from_bridge_input(example["bridge_input"])
+
+        anchors = {(anchor["x"], anchor["y"]) for anchor in summary["safePlacementAnchors"]}
+        self.assertNotIn((336, 64), anchors)
+        self.assertIn((432, 64), anchors)
+        self.assertIn((900, 500), anchors)
+
     def test_validate_command_decision_enforces_payload_rules(self) -> None:
         allowed = ["upgrade_tower", "trigger_next_round"]
         valid = actual_env.normalize_command_decision(
@@ -394,6 +403,7 @@ class ActualGameEnvTest(unittest.TestCase):
 
         self.assertEqual(len(resolved), 1)
         self.assertEqual(resolved[0]["metadata"]["summary_sha256"], "fixture-test-summary")
+        self.assertEqual(resolved[0]["summary"]["teamCash"], 50)
 
     def test_validate_command_summary_rejects_incomplete_nested_entries(self) -> None:
         summary = {

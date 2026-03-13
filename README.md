@@ -30,23 +30,25 @@
 - **Actual-game action surface**: Exactly one JSON object with `{"kind":"command"|"noop","commandType":"place_tower|sell_tower|upgrade_tower|trigger_next_round","payload":{...},"reason":"..."}`.
 
 ### Quickstart
-Run local smoke checks:
+Run legacy macro-round local smoke checks:
 
 ```bash
 PYTHONPATH=src python3 scripts/smoke.py
 ```
 
-Run baseline local evaluation:
+Run legacy macro-round baseline local evaluation:
 
 ```bash
 PYTHONPATH=src python3 scripts/eval_baseline.py --episodes 10 --max-rounds 20 --output out/metrics.json
 ```
 
-Run hosted training:
+Run hosted training on the actual-game command sanity config:
 
 ```bash
-prime rl run configs/lab/prime-td.toml
+prime rl run configs/lab/prime-td-actual-game-command-sanity-x530.toml
 ```
+
+Legacy macro-round hosted RL config remains available at `configs/lab/prime-td.toml`, but it is historical rather than the current primary route.
 
 Run actual-game gold replay evaluation on the packaged holdout:
 

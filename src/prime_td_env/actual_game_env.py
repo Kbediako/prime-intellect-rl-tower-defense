@@ -400,6 +400,27 @@ def _get_summary_tower_ids(
     return []
 
 
+def _get_visible_safe_placement_anchors(towers: Iterable[Dict[str, Any]]) -> List[Dict[str, int]]:
+    occupied_positions = set()
+    for tower in towers:
+        if not isinstance(tower, dict):
+            continue
+        position = tower.get("position")
+        if not isinstance(position, dict):
+            continue
+        try:
+            x = _normalize_finite_number(position.get("x"), "tower.position.x")
+            y = _normalize_finite_number(position.get("y"), "tower.position.y")
+        except ValueError:
+            continue
+        occupied_positions.add((x, y))
+    return [
+        copy.deepcopy(anchor)
+        for anchor in SAFE_PLACEMENT_ANCHORS
+        if (float(anchor["x"]), float(anchor["y"])) not in occupied_positions
+    ]
+
+
 def _create_command_summary_from_validated_bridge_input(
     normalized_input: Dict[str, Any],
     known_tower_owners: Dict[int, str] | None = None,
@@ -424,7 +445,7 @@ def _create_command_summary_from_validated_bridge_input(
             "width": _normalize_finite_number(state.get("width", 960), "state.width"),
             "height": _normalize_finite_number(state.get("height", 540), "state.height"),
         },
-        "safePlacementAnchors": copy.deepcopy(SAFE_PLACEMENT_ANCHORS),
+        "safePlacementAnchors": _get_visible_safe_placement_anchors(towers),
         "playerTowerIds": player_tower_ids,
         "playerTowerCount": len(player_tower_ids),
         "towers": [],

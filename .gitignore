@@ -16,6 +16,8 @@ build/
 docs/*
 !docs/RESULTS.md
 !docs/PI_Config_References.md
+!docs/daily/
+!docs/daily/*.md
 artifacts/
 Agent_Scartch_Pad.md
 PLAN_FEEDBACK_6_UV.md
